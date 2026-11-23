@@ -103,6 +103,7 @@ button {
   aspect-ratio: 556 / 600; /* the canvas sets the real ratio itself */
 }
 .integrity {
+  border: 2px solid transparent;
   position: absolute;
   top: 8px;
   display: flex;
@@ -637,6 +638,46 @@ textarea {
   color: #9be5b4;
 }
 
+/* ---- turn halo: a soft glow in the colour of whoever's turn it is ---- */
+.stage {
+  --halo: 0, 0, 0;
+}
+.stage[data-turn='blue'] {
+  --halo: 63, 140, 255;
+}
+.stage[data-turn='red'] {
+  --halo: 255, 79, 79;
+}
+.stage[data-turn] {
+  box-shadow:
+    0 0 0 3px rgba(var(--halo), 0.85),
+    0 0 26px 6px rgba(var(--halo), 0.5),
+    0 6px 24px rgba(0, 0, 0, 0.4);
+}
+.stage[data-pulse='true'] {
+  animation: halo-pulse 2.6s ease-in-out infinite;
+}
+@keyframes halo-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 3px rgba(var(--halo), 0.7),
+      0 0 18px 3px rgba(var(--halo), 0.38),
+      0 6px 24px rgba(0, 0, 0, 0.4);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px rgba(var(--halo), 0.95),
+      0 0 36px 12px rgba(var(--halo), 0.62),
+      0 6px 24px rgba(0, 0, 0, 0.4);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage[data-pulse='true'] {
+    animation: none;
+  }
+}
+
 /* ---- range finder ---- */
 .rangefinder {
   background: var(--panel);
@@ -671,19 +712,19 @@ textarea {
   overflow: visible;
 }
 .rf-band {
-  fill: rgba(224, 122, 95, 0.28);
-  stroke: var(--accent);
+  fill: rgba(var(--enemy-rgb), 0.28);
+  stroke: rgb(var(--enemy-rgb));
   stroke-width: 1.5;
   transition: x 0.5s, width 0.5s;
 }
 .rf-band.locked {
-  fill: rgba(224, 122, 95, 0.5);
+  fill: rgba(var(--enemy-rgb), 0.5);
 }
 .rf-band-text {
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
-  fill: #ffd9b5;
+  fill: var(--enemy-light);
 }
 .rf-line {
   stroke: var(--muted);
@@ -698,9 +739,9 @@ textarea {
 }
 .rf-shot.short circle,
 .rf-legend .short::before {
-  fill: #4f86d8;
-  stroke: #dbe9ff;
-  background: #4f86d8;
+  fill: #8e9bb8;
+  stroke: #e8ecf7;
+  background: #8e9bb8;
 }
 .rf-shot.over circle,
 .rf-legend .over::before {

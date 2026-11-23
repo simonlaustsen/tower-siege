@@ -1,3 +1,4 @@
+import { teamForRole, type Team } from '../game/teams'
 import type { Tower } from '../game/tower'
 import { randomTower } from '../game/tower'
 import type { Link } from './link'
@@ -13,6 +14,8 @@ type Unsubscribe = () => void
  */
 export interface GameSession {
   readonly kind: 'local' | 'remote'
+  /** Which colour this player is (the opponent is the other one). */
+  readonly team: Team
   /** This player's side of the current game. Replaced when a new game starts. */
   readonly me: Peer
   /** False while the connection to the other phone is down. Always true against the computer. */
@@ -50,6 +53,7 @@ class Emitter<A extends unknown[]> {
 /** A game against the computer on this device. */
 export class LocalSession implements GameSession {
   readonly kind = 'local' as const
+  readonly team: Team = 'blue'
   readonly connected = true
   private match: Match = createLocalMatch()
   private newGames = new Emitter<[]>()
@@ -83,6 +87,7 @@ const HELLO_TIMEOUT_MS = 10_000
 /** A game against a friend's phone over a link (WebRTC in the real game). */
 export class RemoteSession implements GameSession {
   readonly kind = 'remote' as const
+  readonly team: Team
   /** Settles when the first game is set up. Fails if the other phone speaks a different version. */
   readonly ready: Promise<void>
 
@@ -105,6 +110,7 @@ export class RemoteSession implements GameSession {
     readonly role: 'host' | 'guest',
   ) {
     this.link = link
+    this.team = teamForRole(role)
     this.ready = new Promise((resolve, reject) => {
       this.resolveReady = () => {
         clearTimeout(this.helloTimer)

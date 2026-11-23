@@ -1,4 +1,5 @@
 import { CANNON_X, TOWER_WIDTH } from './game/constants'
+import { TEAMS, type Team } from './game/teams'
 import { RULER_END, RULER_START, type TowerEstimate } from './game/rangeFinder'
 
 /** One of your shots, as a mark on the ruler. */
@@ -17,6 +18,8 @@ interface Props {
   aim: number
   /** It is your turn: the aim marker is live. */
   active: boolean
+  /** The enemy's colour, for the zone where their tower is. */
+  enemy: Team
 }
 
 // The ruler is drawn in its own small coordinate space, sized so the text is readable on a phone.
@@ -36,7 +39,7 @@ const at = (x: number) => LEFT + (Math.min(RULER_END, Math.max(RULER_START, x)) 
  * the numbered marks are where your shots came down; the marker above the ruler is where the shot you
  * are lining up would come down. Put that marker inside the zone.
  */
-export default function RangeFinder({ estimate, shots, aim, active }: Props) {
+export default function RangeFinder({ estimate, shots, aim, active, enemy }: Props) {
   const from = at(estimate.lo)
   const to = at(estimate.hi + TOWER_WIDTH)
   const narrow = estimate.hi - estimate.lo
@@ -51,9 +54,13 @@ export default function RangeFinder({ estimate, shots, aim, active }: Props) {
     : `The enemy tower is somewhere between ${zone} metres away.`
 
   return (
-    <section className="rangefinder" aria-label="Range finder">
+    <section
+      className="rangefinder"
+      aria-label="Range finder"
+      style={{ '--enemy-rgb': TEAMS[enemy].rgb, '--enemy-light': TEAMS[enemy].light } as React.CSSProperties}
+    >
       <div className="rf-head">
-        <h2>Where is the enemy?</h2>
+        <h2>Where is {TEAMS[enemy].name}?</h2>
         <span className={`rf-zone${lockedOn ? ' locked' : ''}`}>
           {lockedOn ? '🎯 ' : ''}
           {zone} m away
@@ -63,7 +70,7 @@ export default function RangeFinder({ estimate, shots, aim, active }: Props) {
         {/* where the enemy tower can be */}
         <rect x={from} y={BAND_TOP} width={Math.max(4, to - from)} height={LINE_Y - BAND_TOP} rx="4" className={`rf-band${lockedOn ? ' locked' : ''}`} />
         <text x={(from + to) / 2} y={BAND_TOP + 17} textAnchor="middle" className="rf-band-text">
-          ENEMY
+          {TEAMS[enemy].name.toUpperCase()}
         </text>
 
         {/* the ruler */}

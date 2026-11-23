@@ -11,6 +11,7 @@ import {
   WORLD_W,
 } from './game/constants'
 import type { ShotResult, Vec } from './game/physics'
+import { TEAMS, type Team } from './game/teams'
 import { forEachBlock, materialOf, type Cell, type Tower } from './game/tower'
 import { createAssets, type Assets } from './render/assets'
 import { blockVariants } from './render/blocks'
@@ -61,6 +62,9 @@ interface Props {
   enemyTower: Tower | null
   /** Barrel angle of your cannon. */
   angle: number
+  /** Your colour, and the enemy's. */
+  myTeam: Team
+  enemyTeam: Team
   shot: ActiveShot | null
   onShotEnd: (id: number) => void
 }
@@ -71,12 +75,12 @@ const GY = WORLD_H - GROUND_MARGIN
 const MAX_DECALS = 6
 
 /** Canvas renderer. Owns animation state (projectile, particles); game state comes via props. */
-export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Props) {
+export function GameCanvas({ myTower, enemyTower, angle, myTeam, enemyTeam, shot, onShotEnd }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   // Latest props, readable from the long-lived animation loop.
-  const live = useRef({ myTower, enemyTower, angle, onShotEnd })
-  live.current = { myTower, enemyTower, angle, onShotEnd }
+  const live = useRef({ myTower, enemyTower, angle, myTeam, enemyTeam, onShotEnd })
+  live.current = { myTower, enemyTower, angle, myTeam, enemyTeam, onShotEnd }
 
   const anim = useRef({
     shot: null as { active: ActiveShot; startedAt: number } | null,
@@ -182,7 +186,7 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
       last = now
       const t = now / 1000
       const a = anim.current
-      const { myTower, enemyTower, angle } = live.current
+      const { myTower, enemyTower, angle, myTeam, enemyTeam } = live.current
       const maxX = visibleLimit()
 
       // --- size canvas to its CSS box and (re)build sprites for this scale ---
@@ -250,12 +254,12 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
       }
 
       // your own tower is always on screen; the enemy's only while peeking, else just a pointer to where it is
-      drawTower(ctx, assets, myTower, MY_PLACEMENT, t)
-      if (enemyTower) drawTower(ctx, assets, enemyTower, enemyPlacement(enemyTower), t)
-      else drawEnemyDirection(ctx, viewW, t)
+      drawTower(ctx, assets, myTower, MY_PLACEMENT, t, TEAMS[myTeam].main)
+      if (enemyTower) drawTower(ctx, assets, enemyTower, enemyPlacement(enemyTower), t, TEAMS[enemyTeam].main)
+      else drawEnemyDirection(ctx, viewW, t, enemyTeam)
 
-      // previous trails (review): yours in white, the enemy's in orange
-      for (const [dir, color] of [['out', '255,255,255'], ['in', '255,170,110']] as const) {
+      // previous trails (review): yours in your team's colour, the enemy's in theirs
+      for (const [dir, color] of [['out', TEAMS[myTeam].lightRgb], ['in', TEAMS[enemyTeam].lightRgb]] as const) {
         const trails = a.trails[dir]
         trails.forEach((trail, i) => {
           ctx.fillStyle = `rgba(${color},${0.22 + 0.1 * (i / Math.max(1, trails.length))})`
@@ -269,7 +273,7 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
         })
       }
 
-      drawCannon(ctx, assets, { angleDeg: angle, recoil: a.recoil, time: t })
+      drawCannon(ctx, assets, { angleDeg: angle, recoil: a.recoil, time: t, team: TEAMS[myTeam] })
 
       // projectile
       if (projectile && a.shot && projectile.x <= maxX) {
@@ -311,7 +315,7 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
       ctx.fillRect(0, 0, viewW, WORLD_H)
     }
 
-    const drawTower = (c: CanvasRenderingContext2D, as: Assets, tw: Tower, placement: Placement, t: number) => {
+    const drawTower = (c: CanvasRenderingContext2D, as: Assets, tw: Tower, placement: Placement, t: number, flag: string) => {
       // long dusk shadow stretching away from the low sun, towards the cannon
       let top = 0
       forEachBlock(tw, (cell) => (top = Math.max(top, (cell.row + 1) * BLOCK_SIZE)))
@@ -344,7 +348,7 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
         const by = GY - (flagRow + 1) * BLOCK_SIZE
         c.fillStyle = '#3b2f2a'
         c.fillRect(bx - 0.8, by - 26, 1.6, 26)
-        c.fillStyle = '#d64545'
+        c.fillStyle = flag
         c.beginPath()
         c.moveTo(bx + 0.8, by - 26)
         for (let i = 0; i <= 8; i++) c.lineTo(bx + 0.8 + i * 2.2, by - 23 + Math.sin(t * 6 + i * 0.7) * 1.8 * (i / 8))
@@ -355,12 +359,13 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
       }
     }
 
-    /** The enemy is off the right edge of the screen: a glow and drifting arrows say so. */
-    const drawEnemyDirection = (c: CanvasRenderingContext2D, viewW: number, t: number) => {
+    /** The enemy is off the right edge of the screen: a glow and drifting arrows, in their colour, say so. */
+    const drawEnemyDirection = (c: CanvasRenderingContext2D, viewW: number, t: number, team: Team) => {
+      const style = TEAMS[team]
       const pulse = 0.5 + 0.5 * Math.sin(t * 2.4)
       const glow = c.createLinearGradient(viewW - 90, 0, viewW, 0)
-      glow.addColorStop(0, 'rgba(255,120,70,0)')
-      glow.addColorStop(1, `rgba(255,120,70,${0.16 + 0.12 * pulse})`)
+      glow.addColorStop(0, `rgba(${style.rgb},0)`)
+      glow.addColorStop(1, `rgba(${style.rgb},${0.2 + 0.14 * pulse})`)
       c.fillStyle = glow
       c.fillRect(viewW - 90, 0, 90, GY + 14)
 
@@ -370,7 +375,7 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
         const phase = (t * 1.4 - i * 0.28) % 1.0
         const k = phase < 0 ? phase + 1 : phase
         const x = viewW - 62 + i * 15 + k * 8
-        c.strokeStyle = `rgba(255,214,170,${0.35 + 0.6 * Math.sin(k * Math.PI)})`
+        c.strokeStyle = `rgba(${style.lightRgb},${0.35 + 0.6 * Math.sin(k * Math.PI)})`
         c.lineWidth = 5
         c.lineCap = 'round'
         c.lineJoin = 'round'
@@ -383,10 +388,10 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
       c.textAlign = 'right'
       c.font = '800 17px system-ui, sans-serif'
       c.lineWidth = 4
-      c.strokeStyle = 'rgba(30,14,10,0.7)'
-      c.strokeText('ENEMY', viewW - 12, cy - 30)
-      c.fillStyle = '#ffd9b5'
-      c.fillText('ENEMY', viewW - 12, cy - 30)
+      c.strokeStyle = 'rgba(15,10,25,0.75)'
+      c.strokeText(style.name.toUpperCase(), viewW - 12, cy - 30)
+      c.fillStyle = style.light
+      c.fillText(style.name.toUpperCase(), viewW - 12, cy - 30)
     }
 
     raf = requestAnimationFrame(frame)

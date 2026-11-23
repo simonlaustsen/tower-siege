@@ -78,6 +78,11 @@ else about the other tower. Tests assert that nothing about the tower leaks into
 The enemy is off the right edge of the screen, marked with an "ENEMY" arrow. Your shots fly right and
 leave the screen; the enemy's shots arrive from the right edge and hit your tower.
 
+**Teams and turn halo.** The host is **blue**, the guest **red** (against the computer you are blue), so
+two screens side by side can be told apart even though both play left to right. Each phone draws its own
+tower flag, cannon banner and shot trails in its team colour and the enemy in the other, and a soft halo
+around the battlefield glows in the colour of whoever's turn it is: the same colour on both phones.
+
 **Range finder.** Under the scene, a ruler (metres from your cannon) shows a shaded zone where the
 enemy tower can be. It is worked out from the rules (a tower stands 510-780 m away) and what your
 shots earned: a hint like "slightly short" or "just over the top" rules distances out

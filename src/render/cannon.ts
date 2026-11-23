@@ -9,6 +9,8 @@ export interface CannonPose {
   recoil: number
   /** Seconds, for the fuse ember flicker. */
   time: number
+  /** Colours of the team banner flying beside the cannon. */
+  team: { main: string; dark: string }
 }
 
 function sandbags(ctx: CanvasRenderingContext2D) {
@@ -118,8 +120,39 @@ function barrel(ctx: CanvasRenderingContext2D, recoil: number) {
 }
 
 /** Wooden carriage, spoked wheel and iron barrel. Origin is the world; y up is flipped by GY. */
+/** A cloth banner in the team's colour on a pole, flying towards the enemy. */
+function banner(ctx: CanvasRenderingContext2D, pose: CannonPose) {
+  const x = CANNON_SCREEN_X - 46
+  const top = GY - 78
+  ctx.fillStyle = '#3b2f2a'
+  ctx.fillRect(x - 1.2, top - 4, 2.4, 82)
+  ctx.fillStyle = '#d9b45a'
+  ctx.beginPath()
+  ctx.arc(x, top - 5, 3.2, 0, Math.PI * 2)
+  ctx.fill()
+  const w = 34
+  const h = 24
+  const wave = (i: number) => Math.sin(pose.time * 5 + i * 0.8) * 2.4 * (i / 8)
+  ctx.fillStyle = pose.team.main
+  ctx.beginPath()
+  ctx.moveTo(x + 1.2, top)
+  for (let i = 0; i <= 8; i++) ctx.lineTo(x + 1.2 + (i * w) / 8, top + wave(i))
+  // swallowtail end
+  ctx.lineTo(x + 1.2 + w - 8, top + h / 2 + wave(8))
+  for (let i = 8; i >= 0; i--) ctx.lineTo(x + 1.2 + (i * w) / 8, top + h + wave(i))
+  ctx.closePath()
+  ctx.fill()
+  ctx.fillStyle = pose.team.dark
+  ctx.globalAlpha = 0.45
+  ctx.fillRect(x + 1.2, top + h - 5, w - 6, 4)
+  ctx.globalAlpha = 1
+  ctx.fillStyle = 'rgba(255,255,255,0.28)'
+  ctx.fillRect(x + 1.2, top, w - 4, 2)
+}
+
 export function drawCannon(ctx: CanvasRenderingContext2D, assets: Assets, pose: CannonPose) {
   const rad = (pose.angleDeg * Math.PI) / 180
+  banner(ctx, pose)
   sandbags(ctx)
 
   // dirt mound

@@ -12,6 +12,7 @@ import {
 import { previewFlight } from './game/attackerView'
 import type { Feedback } from './game/feedback'
 import { simulateShot } from './game/physics'
+import { otherTeam, TEAMS, type Team } from './game/teams'
 import { flightOf, initialEstimate, landingX, narrow, resultOf, type Flight } from './game/rangeFinder'
 import { countBlocks, createTower, materialOf, towerMaxHp, type Tower } from './game/tower'
 import type { GameSession } from './net/session'
@@ -100,12 +101,16 @@ function Stepper(props: {
 }
 
 /** Tower health, as a small chip over the battlefield. The enemy's is a secret unless peeking. */
-function IntegrityChip(props: { side: 'mine' | 'enemy'; label: string; tower: Tower; hidden?: boolean }) {
-  const { side, label, tower, hidden = false } = props
+function IntegrityChip(props: { side: 'mine' | 'enemy'; label: string; team: Team; tower: Tower; hidden?: boolean }) {
+  const { side, label, team, tower, hidden = false } = props
   const hpLeft = tower.hp.flat().reduce((s, v) => s + v, 0)
   const percent = Math.round((countBlocks(tower) / MAX_BLOCKS) * 100)
   return (
-    <div className={`integrity ${side}`} title={`${label} tower integrity`}>
+    <div
+      className={`integrity ${side}`}
+      title={`${label} tower integrity`}
+      style={{ background: `rgba(${TEAMS[team].rgb},0.62)`, borderColor: TEAMS[team].light }}
+    >
       <span>{label}</span>
       <div className="bar">
         <div
@@ -371,6 +376,12 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
     () => history.reduce((e, h) => narrow(e, h.flight, h.feedback.kind), initialEstimate()),
     [history],
   )
+  // Whose turn it is, shown as a halo around the battlefield in that team's colour (the same on both phones).
+  // When the game ends it settles on the winner's colour.
+  const myTeam = session.team
+  const enemyTeam = otherTeam(myTeam)
+  const myTurn = phase === 'aim' || phase === 'shooting' || phase === 'result'
+  const turnTeam: Team | undefined = !connected ? undefined : outcome ? (outcome === 'won' ? myTeam : enemyTeam) : myTurn ? myTeam : enemyTeam
   const aimLanding = useMemo(() => landingX({ angle, power }), [angle, power])
 
   let banner: { tone: string; title?: string; text?: string }
@@ -421,17 +432,19 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
       </header>
 
       <div className="field" data-wide={peek}>
-      <div className="stage">
+      <div className="stage" data-turn={turnTeam} data-pulse={outcome === null && turnTeam !== undefined}>
         <GameCanvas
           key={gameId}
           myTower={myTower}
           enemyTower={peek ? peekTower : null}
           angle={angle}
+          myTeam={myTeam}
+          enemyTeam={enemyTeam}
           shot={shot}
           onShotEnd={onShotEnd}
         />
-        <IntegrityChip side="mine" label="You" tower={myTower} />
-        <IntegrityChip side="enemy" label="Enemy" tower={peekTower} hidden={!peek} />
+        <IntegrityChip side="mine" label={`${TEAMS[myTeam].name} · you`} team={myTeam} tower={myTower} />
+        <IntegrityChip side="enemy" label={TEAMS[enemyTeam].name} team={enemyTeam} tower={peekTower} hidden={!peek} />
         <div className={`banner ${banner.tone}`} role="status" aria-live="polite">
           {banner.title && <strong>{banner.title}</strong>}
           {banner.text && <span>{banner.text}</span>}
@@ -491,6 +504,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
           shots={[...history].reverse().map((h) => ({ n: h.n, landing: h.flight.landing, result: resultOf(h.feedback.kind) }))}
           aim={aimLanding}
           active={canAct}
+          enemy={enemyTeam}
         />
       )}
       </div>
