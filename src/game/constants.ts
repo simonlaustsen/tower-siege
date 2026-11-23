@@ -45,16 +45,18 @@ export const NEAR_OVER_CLEARANCE = 45
 /** Passing this far above the tower top (or still rising) counts as "too high". */
 export const HIGH_CLEARANCE = 150
 
-/** In shot-physics coordinates, everything right of this x is lost in the fog. */
-export const FOG_X = 430
+/** In shot-physics coordinates, a shot of yours leaves your screen (off the right edge) at this x. */
+export const VIEW_EDGE_X = 430
 
 // ---- Screen layout ----
 // Your own tower stands at the left with your cannon right beside it; the enemy lies
-// beyond the fog on the right. Shot physics always runs from a cannon at CANNON_X to a
+// beyond the right edge of the screen. Shot physics always runs from a cannon at CANNON_X to a
 // tower at its secret `tower.x`; these numbers place that physics onto the screen.
 /** Screen x of the left edge of your own tower. */
 export const MY_TOWER_X = 30
 /** Shift from shot-physics x to screen x for shots you fire. */
 export const ATTACK_OFFSET = 120
 export const CANNON_SCREEN_X = CANNON_X + ATTACK_OFFSET
-export const FOG_SCREEN_X = FOG_X + ATTACK_OFFSET
+export const VIEW_EDGE_SCREEN_X = VIEW_EDGE_X + ATTACK_OFFSET
+/** Width of the screen on a real game: just enough that a shot of yours flies out of the right edge. */
+export const VIEW_W = VIEW_EDGE_SCREEN_X + PROJECTILE_RADIUS

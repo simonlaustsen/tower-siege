@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { GameCanvas, type ActiveShot } from './GameCanvas'
+import RangeFinder from './RangeFinder'
 import {
   MAX_ANGLE,
   MAX_POWER,
@@ -11,6 +12,7 @@ import {
 import { previewFlight } from './game/attackerView'
 import type { Feedback } from './game/feedback'
 import { simulateShot } from './game/physics'
+import { flightOf, initialEstimate, landingX, narrow, resultOf, type Flight } from './game/rangeFinder'
 import { countBlocks, createTower, materialOf, towerMaxHp, type Tower } from './game/tower'
 import type { GameSession } from './net/session'
 import { enemyPlacement, inwardMapX, mapPath, MY_PLACEMENT, outwardMapX } from './render/placement'
@@ -32,6 +34,8 @@ interface HistoryEntry {
   angle: number
   power: number
   feedback: Feedback
+  /** How the shot flew over open ground, for the range finder. */
+  flight: Flight
 }
 
 /** My shot between "fired" and "settled": it settles once the animation AND the reply are both in. */
@@ -204,7 +208,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
     if (!next) return
     const id = nextId.current++
     const { result } = next.resolution
-    // The enemy's flight is drawn flipped: out of the fog on the right, onto your tower's right side.
+    // The enemy's flight is drawn flipped: in from the right, onto your tower's right side.
     const tower = myTowerRef.current
     const mapX = inwardMapX(tower)
     const active: ActiveShot = {
@@ -239,7 +243,10 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
     setShot(null)
     setWaiting(false)
     setFeedback(fb)
-    setHistory((h) => [{ n: h.length + 1, angle: p.angle, power: p.power, feedback: fb }, ...h])
+    setHistory((h) => [
+      { n: h.length + 1, angle: p.angle, power: p.power, feedback: fb, flight: flightOf({ angle: p.angle, power: p.power }) },
+      ...h,
+    ])
     if (towerDown) {
       setOutcome('won')
       go('over')
@@ -258,7 +265,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
     const input = { angle, power }
 
     // What this screen is allowed to animate. In peek mode (dev only) it is the real
-    // outcome against the real tower; otherwise only the flight up to the fog line.
+    // outcome against the real tower; otherwise only the flight up to the edge of the screen.
     let active: ActiveShot
     if (peek) {
       const result = simulateShot(peekTower, input)
@@ -359,6 +366,13 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
 
   // ---- what to show ----
 
+  // Where the enemy tower can be, from the rules and what each shot earned: never from the tower itself.
+  const estimate = useMemo(
+    () => history.reduce((e, h) => narrow(e, h.flight, h.feedback.kind), initialEstimate()),
+    [history],
+  )
+  const aimLanding = useMemo(() => landingX({ angle, power }), [angle, power])
+
   let banner: { tone: string; title?: string; text?: string }
   if (error) banner = { tone: 'big', title: 'Connection problem', text: error }
   else if (phase === 'aim') {
@@ -406,6 +420,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
         </div>
       </header>
 
+      <div className="field" data-wide={peek}>
       <div className="stage">
         <GameCanvas
           key={gameId}
@@ -469,6 +484,15 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
             </div>
           </div>
         )}
+      </div>
+      {!peek && (
+        <RangeFinder
+          estimate={estimate}
+          shots={[...history].reverse().map((h) => ({ n: h.n, landing: h.flight.landing, result: resultOf(h.feedback.kind) }))}
+          aim={aimLanding}
+          active={canAct}
+        />
+      )}
       </div>
 
       <section className="controls" data-active={canAct}>

@@ -1,4 +1,4 @@
-import { FOG_X } from './constants'
+import { VIEW_EDGE_X } from './constants'
 import { simulateShot, type ShotInput, type Vec } from './physics'
 import { createTower } from './tower'
 
@@ -19,18 +19,18 @@ export interface FlightPreview {
  */
 export function previewFlight(input: ShotInput): FlightPreview {
   const { path, impact } = simulateShot(EMPTY_FIELD, input)
-  if (impact.x < FOG_X) return { path, landsInView: true }
+  if (impact.x < VIEW_EDGE_X) return { path, landsInView: true }
 
   const visible: Vec[] = []
   for (let i = 0; i < path.length; i++) {
     const p = path[i]
-    if (p.x <= FOG_X) {
+    if (p.x <= VIEW_EDGE_X) {
       visible.push(p)
       continue
     }
     const prev = path[i - 1]
-    const t = (FOG_X - prev.x) / (p.x - prev.x)
-    visible.push({ x: FOG_X, y: prev.y + (p.y - prev.y) * t })
+    const t = (VIEW_EDGE_X - prev.x) / (p.x - prev.x)
+    visible.push({ x: VIEW_EDGE_X, y: prev.y + (p.y - prev.y) * t })
     break
   }
   return { path: visible, landsInView: false }

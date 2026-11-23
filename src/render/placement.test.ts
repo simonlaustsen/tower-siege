@@ -4,7 +4,7 @@ import {
   ATTACK_OFFSET,
   BLOCK_SIZE,
   CANNON_SCREEN_X,
-  FOG_SCREEN_X,
+  VIEW_EDGE_SCREEN_X,
   MY_TOWER_X,
   PROJECTILE_RADIUS,
   TOWER_MAX_X,
@@ -16,12 +16,12 @@ import { createTower } from '../game/tower'
 import { cellRect, enemyPlacement, inwardMapX, mapPath, MY_PLACEMENT, outwardMapX } from './placement'
 
 describe('screen layout', () => {
-  it('puts your tower and your cannon next to each other, with the fog beyond', () => {
+  it('puts your tower and your cannon next to each other, with the edge of the screen beyond', () => {
     const towerRight = MY_TOWER_X + TOWER_WIDTH
     expect(MY_TOWER_X).toBeGreaterThanOrEqual(0)
     expect(CANNON_SCREEN_X - towerRight).toBeGreaterThan(40) // room to breathe...
     expect(CANNON_SCREEN_X - towerRight).toBeLessThan(140) // ...but clearly side by side
-    expect(FOG_SCREEN_X).toBeGreaterThan(CANNON_SCREEN_X + 150) // visible flight before the fog
+    expect(VIEW_EDGE_SCREEN_X).toBeGreaterThan(CANNON_SCREEN_X + 150) // visible flight before the edge
   })
 
   it('keeps the peeked enemy tower on screen', () => {
@@ -41,11 +41,11 @@ describe('your shots', () => {
     expect(first.y).toBeCloseTo(muzzle.y)
   })
 
-  it('vanish into the fog at the fog line on screen', () => {
+  it('fly off the right edge of the screen', () => {
     const { path, landsInView } = previewFlight({ angle: 45, power: 80 })
     expect(landsInView).toBe(false)
     const screen = mapPath(path, outwardMapX)
-    expect(screen[screen.length - 1].x).toBeCloseTo(FOG_SCREEN_X)
+    expect(screen[screen.length - 1].x).toBeCloseTo(VIEW_EDGE_SCREEN_X)
   })
 })
 
@@ -80,11 +80,11 @@ describe('enemy shots at your tower (mirrored)', () => {
     expect(far.x).toBe(MY_TOWER_X)
   })
 
-  it('arrive from the fog, travelling towards your tower', () => {
+  it('arrive from off screen, travelling towards your tower', () => {
     const tower = createTower(700)
     const result = simulateShot(tower, { angle: 45, power: 74 })
     const screen = mapPath(result.path, inwardMapX(tower))
-    expect(screen[0].x).toBeGreaterThan(FOG_SCREEN_X) // starts hidden in the fog
+    expect(screen[0].x).toBeGreaterThan(VIEW_EDGE_SCREEN_X) // starts off screen
     expect(screen[screen.length - 1].x).toBeLessThan(screen[0].x) // and heads left
   })
 

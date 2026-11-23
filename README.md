@@ -1,8 +1,8 @@
 # Tower Siege
 
 A two-player, turn-based artillery game for two phones. Each player owns a wooden tower that
-**only exists on their own phone**. You can't see the enemy's tower. You aim through the fog and
-learn from feedback ("slightly short", "dropped into a gap", "block destroyed"...).
+**only exists on their own phone**. You can't see the enemy's tower, only a pointer to where it is.
+You learn from feedback ("slightly short", "dropped into a gap", "block destroyed"...).
 
 You can play the computer, or a friend on their own phone. Two phones pair directly over Wi-Fi
 (WebRTC), with no account and no game server.
@@ -74,9 +74,17 @@ code itself sits after the `#`, which browsers never send to a server.
 shot against its own tower and replies with qualitative feedback only. A phone never learns anything
 else about the other tower. Tests assert that nothing about the tower leaks into a reply.
 
-**Screen layout.** One scene, always showing your own tower and your own cannon side by side at the
-left. The enemy is beyond the fog on the right. Your shots fly right and vanish into the fog; the
-enemy's shots emerge from the fog and hit your tower. The shot physics is unchanged (a cannon on the
+**Screen layout.** One scene, always showing just your own tower and your own cannon side by side.
+The enemy is off the right edge of the screen, marked with an "ENEMY" arrow. Your shots fly right and
+leave the screen; the enemy's shots arrive from the right edge and hit your tower.
+
+**Range finder.** Under the scene, a ruler (metres from your cannon) shows a shaded zone where the
+enemy tower can be. It is worked out from the rules (a tower stands 510-780 m away) and what your
+shots earned: a hint like "slightly short" or "just over the top" rules distances out
+(`src/game/rangeFinder.ts`). It never sees the tower, and a test checks the real tower always stays
+inside the zone. Your shots appear on the ruler where they came down (blue short, purple over, gold
+hit), and a ▼ shows where your current angle and power would come down, so you can line it up with the
+zone. The same metres are marked on the ground in the scene. The shot physics is unchanged (a cannon on the
 left, a tower on the right); `src/render/placement.ts` maps it onto the screen, mirroring enemy
 shots so they land on the right-hand face of your tower. Tests check that a mirrored hit lands on
 exactly the block the physics says was hit.

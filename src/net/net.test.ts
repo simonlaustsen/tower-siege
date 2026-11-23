@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { previewFlight } from '../game/attackerView'
 import { ShotPlanner } from '../game/botStrategy'
-import { FOG_X } from '../game/constants'
+import { VIEW_EDGE_X } from '../game/constants'
 import { Defender } from '../game/defender'
 import { simulateShot } from '../game/physics'
 import { createTower } from '../game/tower'
@@ -130,10 +130,10 @@ describe('peers', () => {
 })
 
 describe('attacker preview (no knowledge of the tower)', () => {
-  it('never shows anything beyond the fog line', () => {
+  it('never shows anything beyond the screen edge', () => {
     for (const [angle, power] of [[45, 70], [30, 100], [70, 60], [15, 40]]) {
       const { path } = previewFlight({ angle, power })
-      expect(Math.max(...path.map((p) => p.x))).toBeLessThanOrEqual(FOG_X + 1e-9)
+      expect(Math.max(...path.map((p) => p.x))).toBeLessThanOrEqual(VIEW_EDGE_X + 1e-9)
     }
   })
 

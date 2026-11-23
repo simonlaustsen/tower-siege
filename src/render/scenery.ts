@@ -1,4 +1,4 @@
-import { GROUND_MARGIN, WORLD_H, WORLD_W } from '../game/constants'
+import { CANNON_SCREEN_X, GROUND_MARGIN, WORLD_H, WORLD_W } from '../game/constants'
 import { mulberry32 } from './rng'
 
 export const BG_MARGIN = 20 // extra world units on every side so screen shake never shows edges
@@ -84,13 +84,14 @@ function paintGround(ctx: CanvasRenderingContext2D) {
     ctx.fill()
   }
 
-  // distance markers
+  // distance markers: metres from your cannon, the same numbers the range finder uses
   ctx.fillStyle = 'rgba(255,240,210,0.5)'
   ctx.font = '600 14px system-ui, sans-serif'
   ctx.textAlign = 'center'
-  for (let x = 200; x < WORLD_W; x += 200) {
+  for (let d = 100; CANNON_SCREEN_X + d < WORLD_W; d += 100) {
+    const x = CANNON_SCREEN_X + d
     ctx.fillRect(x - 1, GY + 12, 2, 8)
-    ctx.fillText(String(x), x, GY + 38)
+    ctx.fillText(String(d), x, GY + 38)
   }
 
   // grass strip

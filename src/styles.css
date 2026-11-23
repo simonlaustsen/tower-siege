@@ -79,6 +79,17 @@ button {
 }
 
 /* ---- stage ---- */
+.field {
+  /* just your side of the battlefield: your tower and cannon, as big as fits */
+  width: min(100%, 560px, calc(62vh * 556 / 600));
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.field[data-wide='true'] {
+  width: 100%;
+}
 .stage {
   position: relative;
   border-radius: 14px;
@@ -89,7 +100,7 @@ button {
 .game-canvas {
   display: block;
   width: 100%;
-  aspect-ratio: 1000 / 600;
+  aspect-ratio: 556 / 600; /* the canvas sets the real ratio itself */
 }
 .integrity {
   position: absolute;
@@ -624,4 +635,132 @@ textarea {
 
 .note.good {
   color: #9be5b4;
+}
+
+/* ---- range finder ---- */
+.rangefinder {
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 8px 12px 10px;
+}
+.rf-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.rf-head h2 {
+  margin: 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.rf-zone {
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: var(--accent-2);
+}
+.rf-zone.locked {
+  color: #ffb98f;
+}
+.rf-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.rf-band {
+  fill: rgba(224, 122, 95, 0.28);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  transition: x 0.5s, width 0.5s;
+}
+.rf-band.locked {
+  fill: rgba(224, 122, 95, 0.5);
+}
+.rf-band-text {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  fill: #ffd9b5;
+}
+.rf-line {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+.rf-tick {
+  font-size: 9px;
+  fill: var(--muted);
+}
+.rf-shot circle {
+  stroke-width: 1.5;
+}
+.rf-shot.short circle,
+.rf-legend .short::before {
+  fill: #4f86d8;
+  stroke: #dbe9ff;
+  background: #4f86d8;
+}
+.rf-shot.over circle,
+.rf-legend .over::before {
+  fill: #9b6ad8;
+  stroke: #eadcff;
+  background: #9b6ad8;
+}
+.rf-shot.hit circle,
+.rf-legend .hit::before {
+  fill: #c9a227;
+  stroke: #fff3c4;
+  background: #c9a227;
+}
+.rf-shot.big circle {
+  fill: var(--good);
+  stroke: #e6fff2;
+}
+.rf-legend {
+  display: flex;
+  gap: 14px;
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.rf-legend span::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+.rf-shot text {
+  font-size: 9px;
+  font-weight: 800;
+  fill: #fff;
+}
+.rf-aim line {
+  stroke: #fff;
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+.rf-aim path {
+  fill: #fff;
+}
+.rf-aim.inside line {
+  stroke: var(--good);
+}
+.rf-aim.inside path {
+  fill: var(--good);
+}
+.rf-aim.idle {
+  opacity: 0.45;
+}
+.rf-aim {
+  transition: opacity 0.2s;
+}
+.rf-caption {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
 }

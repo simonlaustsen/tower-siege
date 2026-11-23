@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import {
   BLOCK_SIZE,
-  FOG_SCREEN_X,
+  VIEW_EDGE_SCREEN_X,
+  VIEW_W,
   GROUND_MARGIN,
   PROJECTILE_RADIUS,
   TOWER_COLS,
@@ -43,9 +44,9 @@ export interface ShotDetail {
 /** A shot as the canvas animates it: only what this screen is allowed to know. */
 export interface ActiveShot {
   id: number
-  /** 'out': you fired it, from your cannon. 'in': the enemy fired it, out of the fog at your tower. */
+  /** 'out': you fired it, from your cannon. 'in': the enemy fired it, in from the right edge at your tower. */
   dir: 'out' | 'in'
-  /** Trajectory in screen coordinates. A shot of yours that reaches the fog stops at the fog line. */
+  /** Trajectory in screen coordinates. A shot of yours that leaves the screen stops at its right edge. */
   path: Vec[]
   /** The ball lands on open ground in plain view (no detail available). */
   groundLanding: boolean
@@ -56,7 +57,7 @@ export interface ActiveShot {
 interface Props {
   /** Your own tower. Always shown, next to your cannon. */
   myTower: Tower
-  /** The enemy tower, shown only while peeking (dev). Otherwise null: it is hidden in the fog. */
+  /** The enemy tower, shown only while peeking (dev). Otherwise null: it only exists on their phone. */
   enemyTower: Tower | null
   /** Barrel angle of your cannon. */
   angle: number
@@ -93,7 +94,7 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
     const a = anim.current
     a.shot = { active: shot, startedAt: performance.now() }
     if (shot.dir === 'out') {
-      // Your cannon fires. (The enemy's cannon is out in the fog, so its shots just emerge.)
+      // Your cannon fires. (The enemy's cannon is off screen, so its shots just arrive.)
       a.recoil = 14
       const [muzzle, next] = shot.path
       muzzleBlast(a.particles, muzzle.x, muzzle.y, Math.atan2(next.y - muzzle.y, next.x - muzzle.x))
@@ -107,8 +108,8 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
     let last = performance.now()
     let assets: Assets | null = null
 
-    /** Beyond this screen x nothing may be seen: the fog, unless the enemy tower is being peeked at. */
-    const visibleLimit = () => (live.current.enemyTower ? Infinity : FOG_SCREEN_X)
+    /** Beyond this screen x nothing may be seen: the edge of the screen, unless the enemy tower is being peeked at. */
+    const visibleLimit = () => (live.current.enemyTower ? Infinity : VIEW_EDGE_SCREEN_X)
 
     const variantOf = (t: Tower, cell: Cell) => hash3(t.x, cell.row, cell.col) % blockVariants(t.material)
 
@@ -167,7 +168,7 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
         const end = active.path[active.path.length - 1]
         groundImpact(end.x, end.y, dir)
       }
-      // Remember the trail for review (the fog hides anything beyond the fog line).
+      // Remember the trail for review (nothing past the right edge is shown).
       const trails = a.trails[dir]
       trails.push(active.path)
       if (trails.length > 4) trails.shift()
@@ -185,15 +186,19 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
       const maxX = visibleLimit()
 
       // --- size canvas to its CSS box and (re)build sprites for this scale ---
+      // The screen shows just your side (your tower and cannon); peeking at the enemy needs the whole field.
+      const viewW = enemyTower ? WORLD_W : VIEW_W
+      const ratio = `${viewW} / ${WORLD_H}`
+      if (canvas.style.aspectRatio !== ratio) canvas.style.aspectRatio = ratio
       const cssW = canvas.clientWidth
       if (cssW === 0) return
-      const cssH = Math.round((cssW * WORLD_H) / WORLD_W)
+      const cssH = Math.round((cssW * WORLD_H) / viewW)
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
       if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
         canvas.width = Math.round(cssW * dpr)
         canvas.height = Math.round(cssH * dpr)
       }
-      const scale = (cssW / WORLD_W) * dpr
+      const scale = (cssW / viewW) * dpr
       if (!assets || Math.abs(assets.scale - scale) / scale > 0.02) assets = createAssets(scale)
 
       // --- advance projectile ---
@@ -224,7 +229,7 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
       ctx.drawImage(assets.bg, -BG_MARGIN, -BG_MARGIN, WORLD_W + BG_MARGIN * 2, WORLD_H + BG_MARGIN * 2)
 
       for (const c of assets.clouds) {
-        const span = WORLD_W + c.w + 80
+        const span = viewW + c.w + 80
         const x = ((c.x0 + t * c.speed) % span) - c.w
         ctx.globalAlpha = c.alpha
         ctx.drawImage(c.sprite, x, c.y, c.w, c.h)
@@ -244,10 +249,10 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
         ctx.fill()
       }
 
-      // your own tower is always on screen; the enemy's only while peeking, else fog
+      // your own tower is always on screen; the enemy's only while peeking, else just a pointer to where it is
       drawTower(ctx, assets, myTower, MY_PLACEMENT, t)
       if (enemyTower) drawTower(ctx, assets, enemyTower, enemyPlacement(enemyTower), t)
-      else drawFog(ctx, assets, t)
+      else drawEnemyDirection(ctx, viewW, t)
 
       // previous trails (review): yours in white, the enemy's in orange
       for (const [dir, color] of [['out', '255,255,255'], ['in', '255,170,110']] as const) {
@@ -256,7 +261,7 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
           ctx.fillStyle = `rgba(${color},${0.22 + 0.1 * (i / Math.max(1, trails.length))})`
           for (let k = 0; k < trail.length; k += 6) {
             const p = trail[k]
-            if (p.x > maxX) continue // enemy shots begin out in the fog
+            if (p.x > maxX) continue // enemy shots begin off screen
             ctx.beginPath()
             ctx.arc(p.x, GY - p.y, 1.8, 0, Math.PI * 2)
             ctx.fill()
@@ -299,7 +304,11 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
       drawParticles(ctx, assets, a.particles, GY, maxX)
       ctx.restore()
 
-      ctx.drawImage(assets.vignette, 0, 0, WORLD_W, WORLD_H)
+      const vig = ctx.createRadialGradient(viewW / 2, WORLD_H * 0.55, WORLD_H * 0.35, viewW / 2, WORLD_H * 0.55, Math.max(viewW, WORLD_H) * 0.65)
+      vig.addColorStop(0, 'rgba(10,8,30,0)')
+      vig.addColorStop(1, 'rgba(10,8,30,0.5)')
+      ctx.fillStyle = vig
+      ctx.fillRect(0, 0, viewW, WORLD_H)
     }
 
     const drawTower = (c: CanvasRenderingContext2D, as: Assets, tw: Tower, placement: Placement, t: number) => {
@@ -346,26 +355,38 @@ export function GameCanvas({ myTower, enemyTower, angle, shot, onShotEnd }: Prop
       }
     }
 
-    const drawFog = (c: CanvasRenderingContext2D, as: Assets, t: number) => {
-      const fog = c.createLinearGradient(FOG_SCREEN_X - 60, 0, FOG_SCREEN_X + 80, 0)
-      fog.addColorStop(0, 'rgba(210,215,230,0)')
-      fog.addColorStop(0.5, 'rgba(210,215,230,0.94)')
-      fog.addColorStop(1, 'rgba(225,228,240,0.98)')
-      c.fillStyle = fog
-      c.fillRect(FOG_SCREEN_X - 60, 0, WORLD_W - FOG_SCREEN_X + 60, GY + 14)
-      // drifting banks of mist
-      for (let i = 0; i < 16; i++) {
-        const r = 70 + ((i * 37) % 70)
-        const x = FOG_SCREEN_X + 30 + ((i * 131) % (WORLD_W - FOG_SCREEN_X)) + Math.sin(t * 0.25 + i) * 30
-        const y = 60 + ((i * 53) % (GY - 60)) + Math.cos(t * 0.2 + i * 2) * 10
-        c.globalAlpha = 0.55
-        c.drawImage(as.puffs.fog, x - r, y - r, r * 2, r * 2)
+    /** The enemy is off the right edge of the screen: a glow and drifting arrows say so. */
+    const drawEnemyDirection = (c: CanvasRenderingContext2D, viewW: number, t: number) => {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 2.4)
+      const glow = c.createLinearGradient(viewW - 90, 0, viewW, 0)
+      glow.addColorStop(0, 'rgba(255,120,70,0)')
+      glow.addColorStop(1, `rgba(255,120,70,${0.16 + 0.12 * pulse})`)
+      c.fillStyle = glow
+      c.fillRect(viewW - 90, 0, 90, GY + 14)
+
+      // three arrows drifting towards the enemy, each fading in and out in turn
+      const cy = GY - 150
+      for (let i = 0; i < 3; i++) {
+        const phase = (t * 1.4 - i * 0.28) % 1.0
+        const k = phase < 0 ? phase + 1 : phase
+        const x = viewW - 62 + i * 15 + k * 8
+        c.strokeStyle = `rgba(255,214,170,${0.35 + 0.6 * Math.sin(k * Math.PI)})`
+        c.lineWidth = 5
+        c.lineCap = 'round'
+        c.lineJoin = 'round'
+        c.beginPath()
+        c.moveTo(x, cy - 15)
+        c.lineTo(x + 12, cy)
+        c.lineTo(x, cy + 15)
+        c.stroke()
       }
-      c.globalAlpha = 1
-      c.fillStyle = 'rgba(40,50,80,0.6)'
-      c.font = '700 24px system-ui, sans-serif'
-      c.textAlign = 'center'
-      c.fillText('Enemy tower hidden in the fog', (FOG_SCREEN_X + WORLD_W) / 2 + 10, GY - 260)
+      c.textAlign = 'right'
+      c.font = '800 17px system-ui, sans-serif'
+      c.lineWidth = 4
+      c.strokeStyle = 'rgba(30,14,10,0.7)'
+      c.strokeText('ENEMY', viewW - 12, cy - 30)
+      c.fillStyle = '#ffd9b5'
+      c.fillText('ENEMY', viewW - 12, cy - 30)
     }
 
     raf = requestAnimationFrame(frame)
