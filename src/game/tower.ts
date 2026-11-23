@@ -13,11 +13,16 @@ export interface Cell {
   col: number // 0 = left
 }
 
-/** A tower is a left-edge x position, a material and an hp grid. hp 0 means "no block". */
+/**
+ * A tower is a left-edge x position, a material and two grids: the hit points each block has now, and the
+ * hit points it started with (0 = there never was a block there). A block that started weaker than the
+ * material's norm is a "soft spot": a rotten beam that gives way at once.
+ */
 export interface Tower {
   x: number
   material: MaterialId
   hp: number[][] // hp[row][col]
+  maxHp: number[][]
 }
 
 export interface Rect {
@@ -27,26 +32,101 @@ export interface Rect {
   h: number
 }
 
+/** A solid, full tower: every cell filled and equally strong. (The game itself uses `generateTower`.) */
 export function createTower(x: number, material: Material = WOOD): Tower {
-  return {
-    x,
-    material: material.id,
-    hp: Array.from({ length: TOWER_ROWS }, () => Array<number>(TOWER_COLS).fill(material.blockHp)),
-  }
+  const grid = () => Array.from({ length: TOWER_ROWS }, () => Array<number>(TOWER_COLS).fill(material.blockHp))
+  return { x, material: material.id, hp: grid(), maxHp: grid() }
 }
 
-/** A fresh wooden tower at a random distance: the defender's secret. */
+/** Share of ground-floor cells left open (a gap to walk through). */
+const GROUND_GAP_CHANCE = 0.12
+/** Share of the upper cells left open: the "windows" that make it a frame rather than a wall. */
+const WINDOW_CHANCE = 0.3
+/** A frame with fewer blocks than this is rebuilt: it would fall to a single shot. */
+const MIN_BLOCKS = 10
+/** Rotten beams per tower. */
+const SOFT_SPOTS = 2
+/** A soft spot's hit points. */
+const SOFT_HP = 1
+
+/**
+ * A random timber frame: open bays here and there, every beam held up from the ground, and a couple of
+ * rotten beams placed (mostly) where a lot rests on them, so that hitting one brings a good part of the
+ * tower down. Nobody but its owner ever sees any of this.
+ */
+export function generateTower(x: number, random: () => number = Math.random, material: Material = WOOD): Tower {
+  const toHp = (g: boolean[][]) => g.map((r) => r.map((v) => (v ? material.blockHp : 0)))
+
+  let frame: boolean[][] | null = null
+  for (let attempt = 0; attempt < 60 && !frame; attempt++) {
+    const g = Array.from({ length: TOWER_ROWS }, (_, row) =>
+      Array.from({ length: TOWER_COLS }, () => random() >= (row === 0 ? GROUND_GAP_CHANCE : WINDOW_CHANCE)),
+    )
+    // Beams that nothing holds up are not part of the tower.
+    for (const c of findUnsupported(toHp(g))) g[c.row][c.col] = false
+    const count = g.flat().filter(Boolean).length
+    const standsOnTwo = g[0].filter(Boolean).length >= 2
+    if (count >= MIN_BLOCKS && standsOnTwo && g[TOWER_ROWS - 1].some(Boolean)) frame = g
+  }
+  frame ??= Array.from({ length: TOWER_ROWS }, () => Array<boolean>(TOWER_COLS).fill(true))
+
+  const hp = toHp(frame)
+
+  // Pick the rotten beams, favouring the ones with the most resting on them.
+  const total = hp.flat().filter((v) => v > 0).length
+  const maxResting = Math.floor(total * (1 - COLLAPSE_REMAINING_FRACTION)) - 2
+  const candidates: { cell: Cell; weight: number }[] = []
+  forEachBlock({ hp } as Tower, (cell) => {
+    const without = hp.map((r) => [...r])
+    without[cell.row][cell.col] = 0
+    const resting = findUnsupported(without).length
+    // A rotten beam alone must not be able to end the game: what falls with it stays below the collapse line.
+    if (resting <= maxResting) candidates.push({ cell, weight: 1 + resting * resting })
+  })
+  for (let n = 0; n < SOFT_SPOTS && candidates.length > 0; n++) {
+    let pick = random() * candidates.reduce((sum, c) => sum + c.weight, 0)
+    let i = 0
+    while (i < candidates.length - 1 && (pick -= candidates[i].weight) > 0) i++
+    const [{ cell }] = candidates.splice(i, 1)
+    hp[cell.row][cell.col] = SOFT_HP
+  }
+
+  return { x, material: material.id, hp, maxHp: hp.map((r) => [...r]) }
+}
+
+/** A fresh wooden tower at a random distance, built at random: the defender's secret. */
 export function randomTower(random: () => number = Math.random): Tower {
-  return createTower(Math.round(TOWER_MIN_X + random() * (TOWER_MAX_X - TOWER_MIN_X)))
+  return generateTower(Math.round(TOWER_MIN_X + random() * (TOWER_MAX_X - TOWER_MIN_X)), random)
 }
 
 export function materialOf(tower: Tower): Material {
   return MATERIALS[tower.material]
 }
 
-/** Total hit points of an undamaged tower of this material. */
-export function towerMaxHp(material: Material): number {
-  return TOWER_ROWS * TOWER_COLS * material.blockHp
+/** How many blocks the tower started with. */
+export function initialBlocks(tower: Tower): number {
+  return tower.maxHp.flat().filter((v) => v > 0).length
+}
+
+/** Total hit points of the tower when new. */
+export function totalMaxHp(tower: Tower): number {
+  return tower.maxHp.flat().reduce((sum, v) => sum + v, 0)
+}
+
+/** A rotten beam: weaker than the material's norm from the start. */
+export function isSoft(tower: Tower, { row, col }: Cell): boolean {
+  const start = tower.maxHp[row][col]
+  return start > 0 && start < materialOf(tower).blockHp
+}
+
+/** How battered a block looks: 0 as new, 1 it has taken a hit, 2 it is on its last legs. */
+export type DamageLevel = 0 | 1 | 2
+
+export function damageLevel(tower: Tower, { row, col }: Cell): DamageLevel {
+  const hp = tower.hp[row][col]
+  const start = tower.maxHp[row][col]
+  if (hp >= start) return 0
+  return hp <= 1 ? 2 : 1
 }
 
 export function blockRect(tower: Tower, { row, col }: Cell): Rect {
@@ -68,7 +148,7 @@ export function countBlocks(tower: Tower): number {
 }
 
 export function isCollapsed(tower: Tower): boolean {
-  return countBlocks(tower) <= Math.floor(TOWER_ROWS * TOWER_COLS * COLLAPSE_REMAINING_FRACTION)
+  return countBlocks(tower) <= Math.floor(initialBlocks(tower) * COLLAPSE_REMAINING_FRACTION)
 }
 
 /** Blocks not connected (via 4-neighbour block chains) to the ground row. */

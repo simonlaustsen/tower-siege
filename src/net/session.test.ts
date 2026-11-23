@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countBlocks } from '../game/tower'
+import { countBlocks, initialBlocks } from '../game/tower'
 import { createLoopbackPair } from './link'
 import { LocalSession, RemoteSession } from './session'
 
@@ -69,8 +69,11 @@ describe('rematch', () => {
     expect(starts).toBe(2)
     expect(host.me).not.toBe(oldHost)
     expect(guest.me).not.toBe(oldGuest)
-    expect(countBlocks(host.me.tower)).toBe(18)
-    expect(countBlocks(guest.me.tower)).toBe(18)
+    for (const { tower } of [host.me, guest.me]) {
+      expect(tower.hp).toEqual(tower.maxHp) // untouched
+      expect(countBlocks(tower)).toBe(initialBlocks(tower))
+      expect(countBlocks(tower)).toBeGreaterThanOrEqual(10)
+    }
     expect(host.me.myTurn).not.toBe(guest.me.myTurn)
     void second
   })

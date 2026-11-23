@@ -3,7 +3,7 @@ import { TOWER_MAX_X, TOWER_MIN_X, TOWER_WIDTH } from './constants'
 import { classifyShot } from './feedback'
 import { simulateShot } from './physics'
 import { flightOf, initialEstimate, narrow, type Flight } from './rangeFinder'
-import { createTower } from './tower'
+import { generateTower } from './tower'
 
 /** A small deterministic random source, so a failure can be reproduced. */
 function lcg(seed: number) {
@@ -24,7 +24,7 @@ describe('range finder', () => {
     let narrowed = 0
     for (let game = 0; game < 300; game++) {
       const x = TOWER_MIN_X + Math.floor(rnd() * (TOWER_MAX_X - TOWER_MIN_X + 1))
-      let tower = createTower(x)
+      let tower = generateTower(x, rnd)
       let estimate = initialEstimate()
       for (let shot = 0; shot < 25; shot++) {
         const input = { angle: 10 + Math.floor(rnd() * 71), power: 10 + Math.floor(rnd() * 91) }

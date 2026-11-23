@@ -3,12 +3,12 @@ import { mulberry32 } from '../render/rng'
 import { ShotPlanner } from './botStrategy'
 import { MAX_ANGLE, MAX_POWER, MIN_ANGLE, MIN_POWER, TOWER_MAX_X, TOWER_MIN_X } from './constants'
 import { Defender } from './defender'
-import { createTower } from './tower'
+import { generateTower } from './tower'
 
 /** Shots the planner needs to bring a tower down, learning only from feedback. */
 function shotsToWin(seed: number, towerX: number, cap = 300): number {
   const planner = new ShotPlanner(mulberry32(seed))
-  const defender = new Defender(createTower(towerX))
+  const defender = new Defender(generateTower(towerX, mulberry32(seed * 7 + 1)))
   for (let n = 1; n <= cap; n++) {
     const { feedback, towerDown } = defender.handleFire(planner.next())
     if (towerDown) return n
@@ -55,8 +55,8 @@ describe('ShotPlanner', () => {
       const pick = () => Math.round(TOWER_MIN_X + r() * (TOWER_MAX_X - TOWER_MIN_X))
       const pa = new ShotPlanner(mulberry32(g * 13))
       const pb = new ShotPlanner(mulberry32(g * 17))
-      const da = new Defender(createTower(pick()))
-      const db = new Defender(createTower(pick()))
+      const da = new Defender(generateTower(pick(), r))
+      const db = new Defender(generateTower(pick(), r))
       for (let n = 1; n <= 400; n++) {
         const a = db.handleFire(pa.next())
         if (a.towerDown) {

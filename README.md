@@ -125,15 +125,24 @@ Median shots for a bot to bring a tower down, and what moved the needle:
 | same, but falls at 60% left | 34 | 39 |
 | 1 hp per block | 20 | 37 |
 | 4x6 tower | 25 | 30 |
-| **3x6 tower, 2 hp, falls at 50% left (current)** | **18** | **23** |
+| 3x6 solid tower, 2 hp, falls at 50% left | 18 | 23 |
+| **random timber frame (current): 10-18 beams, 3 hp, two rotten 1 hp beams** | **16** | **25** |
+
+**Timber-frame towers.** Every game builds a different tower (`generateTower` in `src/game/tower.ts`):
+a 3x6 frame with open bays, every beam held up from the ground, and **two rotten beams** with 1 hit
+point where the rest have 3. Rotten beams are picked where more rests on them, so one hit on a soft spot
+brings its part of the tower down (but never the whole tower: a rotten beam alone cannot win the game).
+They look grey and mossy, so you can see where your own tower is weak. Collapse is judged against how
+many beams that tower started with. Tests check the frames always stand, are varied, and that a hit on a
+soft spot costs far more than a hit on a sound beam.
 
 Findings:
 
 - **Tower width is the big lever**, then hit points. The collapse threshold and tower height barely
   matter: nothing falls until a whole row is cut, so most of the time goes into digging.
-- The current setup gives duels of about 14 rounds (4-5 minutes), a first-mover win rate of about
-  55%, and far less luck than the old tower (worst case 23 shots instead of 67).
-- Keep 2 hit points: the two-stage "Hit!" then "Block destroyed!" feedback lets a player confirm they
-  are on target.
+- The current setup gives duels of about 11 rounds (3-4 minutes), a first-mover win rate of about
+  51%, and little luck (worst case about 25 shots, best about 4: finding a soft spot is the shortcut).
+- Sound beams take 3 hits, and the blocks show three stages (new, cracked, nearly broken), so a player
+  can confirm they are on target before it gives way.
 - Ideas if matches should be shorter still: damage that scales with power, splash damage to
   neighbouring planks, or 1 hp blocks. Ideas if the game feels too easy: stone towers with more hp.

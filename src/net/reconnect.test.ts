@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { WOOD } from '../game/materials'
 import { createTower } from '../game/tower'
 import { createLoopbackPair } from './link'
 import { Peer } from './peer'
@@ -74,7 +75,7 @@ describe('losing and regaining the connection', () => {
     const pending = a.fire(38, 84)
     await tick(30) // the shot has reached B and been resolved; B's answer is on its way back
     const hpAfterFirst = hpSum(b)
-    expect(hpAfterFirst).toBeLessThan(18 * 2)
+    expect(hpAfterFirst).toBeLessThan(18 * WOOD.blockHp)
     la.close() // ...and the answer is lost
     await tick(60)
     expect(a.connected).toBe(false)
@@ -99,7 +100,7 @@ describe('losing and regaining the connection', () => {
     raw.send(fire)
     await tick()
     const hpAfterOnce = hpSum(defender)
-    expect(hpAfterOnce).toBeLessThan(18 * 2) // it did land
+    expect(hpAfterOnce).toBeLessThan(18 * WOOD.blockHp) // it did land
 
     raw.send(fire)
     raw.send(fire)

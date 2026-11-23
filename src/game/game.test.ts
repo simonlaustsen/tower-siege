@@ -31,11 +31,18 @@ describe('physics', () => {
     expect(first.hit).not.toBeNull()
     expect(first.hit!.destroyed).toBe(false)
     expect(classifyShot(tower, first).kind).toBe('hit')
+    const { row, col } = first.hit!.cell
     tower = first.towerAfter
-    expect(tower.hp[first.hit!.cell.row][first.hit!.cell.col]).toBe(WOOD.blockHp - 1)
-    const second = simulateShot(tower, shot)
-    expect(second.hit!.destroyed).toBe(true)
+    expect(tower.hp[row][col]).toBe(WOOD.blockHp - 1)
+    // Sound beams take several hits; the same shot keeps landing on the same block until it breaks.
+    for (let n = 2; n < WOOD.blockHp; n++) {
+      const again = simulateShot(tower, shot)
+      expect(again.hit!.destroyed).toBe(false)
+      tower = again.towerAfter
+    }
+    expect(simulateShot(tower, shot).hit!.destroyed).toBe(true)
   })
+
 })
 
 describe('tower structure', () => {

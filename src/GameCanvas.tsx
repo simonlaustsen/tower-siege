@@ -5,16 +5,15 @@ import {
   VIEW_W,
   GROUND_MARGIN,
   PROJECTILE_RADIUS,
-  TOWER_COLS,
   TOWER_WIDTH,
   WORLD_H,
   WORLD_W,
 } from './game/constants'
 import type { ShotResult, Vec } from './game/physics'
 import { TEAMS, type Team } from './game/teams'
-import { forEachBlock, materialOf, type Cell, type Tower } from './game/tower'
+import { damageLevel, forEachBlock, isSoft, type Cell, type Tower } from './game/tower'
 import { createAssets, type Assets } from './render/assets'
-import { blockVariants } from './render/blocks'
+import { blockVariants, type BlockLook } from './render/blocks'
 import { drawCannon } from './render/cannon'
 import { cellRect, displayCol, enemyPlacement, MY_PLACEMENT, type MapX, type Placement } from './render/placement'
 import {
@@ -116,6 +115,7 @@ export function GameCanvas({ myTower, enemyTower, angle, myTeam, enemyTeam, shot
     const visibleLimit = () => (live.current.enemyTower ? Infinity : VIEW_EDGE_SCREEN_X)
 
     const variantOf = (t: Tower, cell: Cell) => hash3(t.x, cell.row, cell.col) % blockVariants(t.material)
+    const lookOf = (t: Tower, cell: Cell): BlockLook => ({ damage: damageLevel(t, cell), rotten: isSoft(t, cell) })
 
     const causedCollapse = (r: ShotResult) => (r.hit?.collapsed.length ?? 0) > 0
 
@@ -151,12 +151,11 @@ export function GameCanvas({ myTower, enemyTower, angle, myTeam, enemyTeam, shot
             chunks(a.particles, cx, cy, destroyed ? 16 : 6, tower.material, destroyed ? 1.2 : 0.8)
             for (const c of collapsed) {
               const b = cellRect(placement, c)
-              const hp = tower.hp[c.row][c.col]
               fallingBlock(
                 a.particles,
                 b.x + b.w / 2,
                 b.y + b.h / 2,
-                assets.blockSprite(tower.material, variantOf(tower, c), hp < materialOf(tower).blockHp),
+                assets.blockSprite(tower.material, variantOf(tower, c), lookOf(tower, c)),
               )
               dustPlume(a.particles, b.x + b.w / 2, b.y + b.h / 2, 1, 14)
             }
@@ -334,15 +333,15 @@ export function GameCanvas({ myTower, enemyTower, angle, myTeam, enemyTeam, shot
         c.fill()
       }
 
-      forEachBlock(tw, (cell, hp) => {
+      forEachBlock(tw, (cell) => {
         const r = cellRect(placement, cell)
-        c.drawImage(as.blockSprite(tw.material, variantOf(tw, cell), hp < materialOf(tw).blockHp), r.x, GY - r.y - r.h, r.w, r.h)
+        c.drawImage(as.blockSprite(tw.material, variantOf(tw, cell), lookOf(tw, cell)), r.x, GY - r.y - r.h, r.w, r.h)
       })
 
-      // pennant on the highest block of the middle column
-      const mid = Math.floor(TOWER_COLS / 2)
+      // pennant on the highest block (the one nearest the middle, if the top row has several)
       let flagRow = -1
-      tw.hp.forEach((row, i) => row[mid] > 0 && (flagRow = i))
+      tw.hp.forEach((row, i) => row.some((v) => v > 0) && (flagRow = i))
+      const mid = flagRow < 0 ? 0 : [...tw.hp[flagRow].keys()].filter((col) => tw.hp[flagRow][col] > 0).sort((a, b) => Math.abs(a - 1) - Math.abs(b - 1))[0]
       if (flagRow >= 0) {
         const bx = placement.screenX + displayCol(placement, mid) * BLOCK_SIZE + BLOCK_SIZE / 2
         const by = GY - (flagRow + 1) * BLOCK_SIZE

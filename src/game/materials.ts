@@ -12,6 +12,6 @@ export interface Material {
   blockHp: number
 }
 
-export const WOOD: Material = { id: 'wood', name: 'Wood', blockHp: 2 }
+export const WOOD: Material = { id: 'wood', name: 'Wood', blockHp: 3 }
 
 export const MATERIALS: Record<MaterialId, Material> = { wood: WOOD }

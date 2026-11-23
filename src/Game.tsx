@@ -6,15 +6,13 @@ import {
   MAX_POWER,
   MIN_ANGLE,
   MIN_POWER,
-  TOWER_COLS,
-  TOWER_ROWS,
 } from './game/constants'
 import { previewFlight } from './game/attackerView'
 import type { Feedback } from './game/feedback'
 import { simulateShot } from './game/physics'
 import { otherTeam, TEAMS, type Team } from './game/teams'
 import { flightOf, initialEstimate, landingX, narrow, resultOf, type Flight } from './game/rangeFinder'
-import { countBlocks, createTower, materialOf, towerMaxHp, type Tower } from './game/tower'
+import { countBlocks, createTower, initialBlocks, totalMaxHp, type Tower } from './game/tower'
 import type { GameSession } from './net/session'
 import { enemyPlacement, inwardMapX, mapPath, MY_PLACEMENT, outwardMapX } from './render/placement'
 import type { IncomingShot } from './net/peer'
@@ -58,7 +56,6 @@ interface GameProps {
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
-const MAX_BLOCKS = TOWER_ROWS * TOWER_COLS
 
 function Stepper(props: {
   label: string
@@ -104,7 +101,7 @@ function Stepper(props: {
 function IntegrityChip(props: { side: 'mine' | 'enemy'; label: string; team: Team; tower: Tower; hidden?: boolean }) {
   const { side, label, team, tower, hidden = false } = props
   const hpLeft = tower.hp.flat().reduce((s, v) => s + v, 0)
-  const percent = Math.round((countBlocks(tower) / MAX_BLOCKS) * 100)
+  const percent = Math.round((countBlocks(tower) / Math.max(1, initialBlocks(tower))) * 100)
   return (
     <div
       className={`integrity ${side}`}
@@ -115,7 +112,7 @@ function IntegrityChip(props: { side: 'mine' | 'enemy'; label: string; team: Tea
       <div className="bar">
         <div
           className="bar-fill"
-          style={{ width: hidden ? '100%' : `${(hpLeft / towerMaxHp(materialOf(tower))) * 100}%` }}
+          style={{ width: hidden ? '100%' : `${(hpLeft / Math.max(1, totalMaxHp(tower))) * 100}%` }}
           data-hidden={hidden}
         />
       </div>

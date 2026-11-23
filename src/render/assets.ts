@@ -1,6 +1,6 @@
 import { BLOCK_SIZE, WORLD_H, WORLD_W } from '../game/constants'
 import type { MaterialId } from '../game/materials'
-import { paintBlock } from './blocks'
+import { paintBlock, type BlockLook } from './blocks'
 import { BG_MARGIN, paintBackground, paintCloud } from './scenery'
 
 export type PuffKind = 'dust' | 'smoke' | 'glow' | 'dirt' | 'fog'
@@ -22,7 +22,7 @@ export interface Assets {
   vignette: HTMLCanvasElement
   clouds: Cloud[]
   puffs: Record<PuffKind, HTMLCanvasElement>
-  blockSprite: (material: MaterialId, variant: number, damaged: boolean) => HTMLCanvasElement
+  blockSprite: (material: MaterialId, variant: number, look: BlockLook) => HTMLCanvasElement
 }
 
 function sprite(wUnits: number, hUnits: number, scale: number, draw: (ctx: CanvasRenderingContext2D) => void) {
@@ -87,11 +87,11 @@ export function createAssets(scale: number): Assets {
   ) as Record<PuffKind, HTMLCanvasElement>
 
   const blocks = new Map<string, HTMLCanvasElement>()
-  const blockSprite = (material: MaterialId, variant: number, damaged: boolean) => {
-    const key = `${material}:${variant}:${damaged}`
+  const blockSprite = (material: MaterialId, variant: number, look: BlockLook) => {
+    const key = `${material}:${variant}:${look.damage}:${look.rotten}`
     let s = blocks.get(key)
     if (!s) {
-      s = sprite(BLOCK_SIZE, BLOCK_SIZE, scale, (ctx) => paintBlock(ctx, material, variant, damaged))
+      s = sprite(BLOCK_SIZE, BLOCK_SIZE, scale, (ctx) => paintBlock(ctx, material, variant, look))
       blocks.set(key, s)
     }
     return s
