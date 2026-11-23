@@ -61,3 +61,24 @@ describe('describeConnection', () => {
     expect(describeConnection(pc({ remoteDescription: none })).join('\n')).toMatch(/other device offered no network address/)
   })
 })
+
+describe('phones that only offered hidden .local names', () => {
+  const hidden = {
+    type: 'offer',
+    sdp: 'a=candidate:1 1 udp 2113937151 7d3f1a4e-2c1b-4f0a-9d65-1f2a3b4c5d6e.local 54321 typ host\r\n',
+    toJSON: () => ({}),
+  } as RTCSessionDescription
+
+  it('explains a connection that never started (the real failure seen on two phones)', () => {
+    const text = describeConnection(
+      pc({ connectionState: 'new', iceConnectionState: 'new', localDescription: hidden, remoteDescription: hidden }),
+      ['Camera access: refused'],
+    ).join('\n')
+    expect(text).toContain('Camera access: refused')
+    expect(text).toMatch(/hid their Wi-Fi address behind a '.local' name/)
+  })
+
+  it('does not blame the names when real addresses were shared', () => {
+    expect(describeConnection(pc({ iceConnectionState: 'failed' })).join('\n')).not.toMatch(/'.local' name/)
+  })
+})

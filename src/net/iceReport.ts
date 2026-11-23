@@ -38,13 +38,18 @@ const describe = (name: string, s: CandidateSummary) =>
     : `${name}: ${s.total} (${s.udp} udp, ${s.hidden} hidden by name, ${s.numeric} numeric${s.ipv6 ? `, ${s.ipv6} ipv6` : ''})`
 
 /** What to show someone (or paste to a developer) after a failed attempt. */
-export function describeConnection(pc: Pick<RTCPeerConnection, 'connectionState' | 'iceConnectionState' | 'iceGatheringState' | 'localDescription' | 'remoteDescription'>): string[] {
+export function describeConnection(
+  pc: Pick<RTCPeerConnection, 'connectionState' | 'iceConnectionState' | 'iceGatheringState' | 'localDescription' | 'remoteDescription'>,
+  /** Extra facts known to the caller, such as whether camera access was given. */
+  notes: string[] = [],
+): string[] {
   const lines = [
     `Connection: ${pc.connectionState}, ICE: ${pc.iceConnectionState}, gathering: ${pc.iceGatheringState}`,
     describe('This device offered', summarizeSdp(pc.localDescription?.sdp)),
     pc.remoteDescription
       ? describe('The other device offered', summarizeSdp(pc.remoteDescription.sdp))
       : "The other device's code was never received",
+    ...notes,
   ]
   const hint = diagnose(pc)
   return hint ? [...lines, `Likely cause: ${hint}`] : lines
@@ -60,6 +65,11 @@ function diagnose(pc: Pick<RTCPeerConnection, 'iceConnectionState' | 'localDescr
   if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
     // The devices found each other; what is missing is the last step of the handshake.
     return "the devices can reach each other, but the connection was never completed. That usually means the host never entered this phone's code (the second scan or paste)."
+  }
+  if (mine.numeric === 0 && theirs.numeric === 0) {
+    // Both sides only offered `.local` names. If the network doesn't let phones look those up, the
+    // connection never even starts (ICE stays "new").
+    return "both phones hid their Wi-Fi address behind a '.local' name, and the network probably doesn't let phones look those up (common on routers with guest, isolation or mesh features). Allowing camera access when asked makes the phones share their real addresses instead."
   }
   if (pc.iceConnectionState === 'checking' || pc.iceConnectionState === 'failed') {
     return 'both sides offered addresses but could not reach each other. Different Wi-Fi networks, a guest network, a VPN, or a firewall are the usual reasons.'

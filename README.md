@@ -48,6 +48,11 @@ code itself sits after the `#`, which browsers never send to a server.
   guest's link). Without that tick, the phones are not reaching each other: check you are on the same
   Wi-Fi, not a guest network or VPN. Failures include a **Technical details** section that says what
   each side offered and how far the connection got: include it if you report a problem.
+- **Technical details say "hid their Wi-Fi address behind a '.local' name"?** Browsers hide a phone's
+  Wi-Fi address behind a random `.local` name, and some networks don't let phones look those up, so
+  the connection never starts. That is why the game asks to use the camera while pairing: with
+  camera access browsers share the real address instead (nothing is recorded; the camera is off again
+  as soon as the addresses are collected). Allow it on **both** phones.
 - **Phone can't open the link?** Your computer's firewall may be blocking incoming connections to
   Node (macOS asks the first time: choose Allow). Guest, public and some office Wi-Fi networks also
   stop phones from reaching each other ("client isolation"); a home network or a phone hotspot works.

@@ -240,7 +240,11 @@ function HostPairing({ onLinked, onBack, reconnecting }: Omit<Props, 'role'>) {
             </details>
           </>
         ) : (
-          !error && <p className="note">Getting ready…</p>
+          !error && (
+            <p className="note">
+            Getting ready… Your browser may ask to use the camera. That is only so the phones can find each other on the Wi-Fi: nothing is recorded or sent anywhere.
+          </p>
+          )
         )}
       </section>
 
@@ -311,7 +315,9 @@ function GuestAnswerStep(props: { offerCode: string; onLinked: (link: Link) => v
           )}
         </>
       ) : (
-        <p className="note">Getting ready…</p>
+        <p className="note">
+          Getting ready… Your browser may ask to use the camera. That is only so the phones can find each other on the Wi-Fi: nothing is recorded or sent anywhere.
+        </p>
       )}
     </section>
   )

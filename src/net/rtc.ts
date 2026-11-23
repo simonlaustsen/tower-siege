@@ -1,4 +1,5 @@
 import { describeConnection } from './iceReport'
+import { revealLocalAddresses, type RevealStatus } from './localAddresses'
 import { RtcLink } from './rtcLink'
 import { decodeSignal, encodeSignal } from './signaling'
 
@@ -95,9 +96,16 @@ function watch(pc: RTCPeerConnection, fail: (message: string) => void, message: 
   })
 }
 
+const CAMERA_NOTE: Record<RevealStatus, string> = {
+  revealed: 'Camera access: given (real addresses shared)',
+  denied: 'Camera access: refused (addresses hidden behind .local names)',
+  unavailable: 'Camera access: not available here',
+  timeout: 'Camera access: question went unanswered',
+}
+
 /** Rejects `link` with an error that carries a report of how far this connection got. */
-const failWith = (pc: RTCPeerConnection, link: ReturnType<typeof pendingLink>) => (message: string) =>
-  link.reject(new ConnectError(message, describeConnection(pc)))
+const failWith = (pc: RTCPeerConnection, link: ReturnType<typeof pendingLink>, camera: RevealStatus) => (message: string) =>
+  link.reject(new ConnectError(message, describeConnection(pc, [CAMERA_NOTE[camera]])))
 
 export interface HostOffer {
   /** Show this to the guest (as a QR code, or copy it). */
@@ -110,15 +118,21 @@ export interface HostOffer {
 }
 
 export async function startHost(): Promise<HostOffer> {
+  // Before the phone collects its addresses: with camera access it shares real ones (see localAddresses.ts).
+  const reveal = await revealLocalAddresses()
   const pc = new RTCPeerConnection(RTC_CONFIG)
   const channel = pc.createDataChannel('tower-siege', { ordered: true })
   const link = pendingLink()
-  const fail = failWith(pc, link)
+  const fail = failWith(pc, link, reveal.status)
   watch(pc, fail, CONNECT_HELP)
   channel.addEventListener('open', () => link.resolve(new RtcLink(channel, pc)))
 
-  await pc.setLocalDescription(await pc.createOffer())
-  await waitForGathering(pc)
+  try {
+    await pc.setLocalDescription(await pc.createOffer())
+    await waitForGathering(pc)
+  } finally {
+    reveal.release()
+  }
   const offerCode = await encodeSignal(pc.localDescription!)
 
   return {
@@ -147,9 +161,10 @@ export interface GuestAnswer {
 
 export async function joinHost(offerCode: string): Promise<GuestAnswer> {
   const offer = await decodeSignal(offerCode, 'offer')
+  const reveal = await revealLocalAddresses()
   const pc = new RTCPeerConnection(RTC_CONFIG)
   const link = pendingLink()
-  const fail = failWith(pc, link)
+  const fail = failWith(pc, link, reveal.status)
   // Which message to give depends on how far it got when it failed.
   const failGuest = () => fail(phonesCanSeeEachOther(pc) ? GUEST_WAITING_ON_HOST : GUEST_NO_ROUTE)
   pc.addEventListener('connectionstatechange', () => pc.connectionState === 'failed' && failGuest())
@@ -159,9 +174,13 @@ export async function joinHost(offerCode: string): Promise<GuestAnswer> {
     else channel.addEventListener('open', () => link.resolve(new RtcLink(channel, pc)))
   })
 
-  await pc.setRemoteDescription(offer)
-  await pc.setLocalDescription(await pc.createAnswer())
-  await waitForGathering(pc)
+  try {
+    await pc.setRemoteDescription(offer)
+    await pc.setLocalDescription(await pc.createAnswer())
+    await waitForGathering(pc)
+  } finally {
+    reveal.release()
+  }
   const answerCode = await encodeSignal(pc.localDescription!)
   link.deadline(GUEST_WAIT_MS, failGuest)
 
