@@ -4,11 +4,13 @@ import {
   VIEW_EDGE_SCREEN_X,
   VIEW_W,
   GROUND_MARGIN,
+  MY_TOWER_X,
   PROJECTILE_RADIUS,
   TOWER_WIDTH,
   WORLD_H,
   WORLD_W,
 } from './game/constants'
+import { MATERIALS, type MaterialId } from './game/materials'
 import type { ShotResult, Vec } from './game/physics'
 import { TEAMS, type Team } from './game/teams'
 import { damageLevel, forEachBlock, isSoft, type Cell, type Tower } from './game/tower'
@@ -50,8 +52,16 @@ export interface ActiveShot {
   path: Vec[]
   /** The ball lands on open ground in plain view (no detail available). */
   groundLanding: boolean
-  /** Impact details, only for towers that are visible: your own, or the enemy's while peeking. */
+  /** Impact details, only for towers that are visible: your own, or the enemy's while peeking or revealed. */
   detail: ShotDetail | null
+  /**
+   * The flight is not complete yet: only its first part is known (up to the fog) until the defender's reply
+   * arrives. The ball waits at the end of what is known. Whoever completes it updates `path`, `detail`,
+   * `groundLanding` and `reveal` in place and clears this.
+   */
+  open?: boolean
+  /** The enemy's side (a snapshot sent with the reply) is shown for the length of this shot, and then gone again. */
+  reveal?: boolean
 }
 
 interface Props {
@@ -81,6 +91,23 @@ const PLAYBACK_SPEED = 1.7 // x real-time; sim path is sampled at 120 Hz
 const PATH_HZ = 120
 const GY = WORLD_H - GROUND_MARGIN
 const MAX_DECALS = 6
+/** Camera: one gentle zoom for the whole shot, from launch to the moment after the impact. */
+const CAM_ZOOM = 1.14
+/** How long (ms) the camera lingers on an impact before easing home. */
+const IMPACT_HOLD_MS = 1100
+/** Exponential easing rates (per second) for the camera's zoom and position. */
+const CAM_ZOOM_RATE = 3
+const CAM_POS_RATE = 10
+/** How fast (per second) the camera's reach opens up to the enemy's half when it is revealed, and closes again. */
+const CAM_REACH_RATE = 8
+/** How long (ms) the revealed side stays after the impact before the fog closes over it again. */
+const REVEAL_LINGER_MS = IMPACT_HOLD_MS + 300
+/** The revealed tower starts to appear when the ball is this close (world units) to the fog line. */
+const REVEAL_LEAD_IN = 150
+/** Where the camera looks for an incoming shot: around your tower and slingshot. */
+const TOWER_FOCUS_X = 170
+/** The camera looks this many path samples (120 per second of flight) ahead of the ball, so the view is where it is going. */
+const CAM_LOOKAHEAD = 36
 /** How close (world units) a press must be to the pouch or fork to pick it up. */
 const GRAB_RADIUS = 70
 /** Letting go with the pouch closer to the fork than this (world units) is a cancel, not a shot. */
@@ -95,7 +122,8 @@ export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, o
   live.current = { myTower, enemyTower, angle, power, canAim, aimed, onAim, onRelease, myTeam, enemyTeam, onShotEnd }
 
   const anim = useRef({
-    shot: null as { active: ActiveShot; startedAt: number } | null,
+    /** `elapsed` is seconds of real playback time. */
+    shot: null as { active: ActiveShot; elapsed: number } | null,
     // Your shots and the enemy's are remembered separately so they can be drawn in different colours.
     trails: { out: [] as Vec[][], in: [] as Vec[][] },
     decals: { out: [] as number[], in: [] as number[] }, // x of scorch marks on the ground
@@ -106,13 +134,29 @@ export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, o
     released: false,
     dragging: false,
     viewW: VIEW_W,
+    /**
+     * The camera: zoom and the world point at the middle of the screen, eased towards a target each frame.
+     * x0/y0 is the resulting top-left of the view, kept so pointer positions can be mapped back to the world.
+     * `reach` is how far right the camera may look: the fog edge, widening (smoothly) to the whole world only
+     * while the enemy's side is revealed. It must never jump, or the view would jump with it.
+     */
+    cam: { z: 1, cx: VIEW_W / 2, cy: WORLD_H / 2, x0: 0, y0: 0, reach: VIEW_W },
+    /** After a shot lands, the camera lingers here (screen coordinates) until the time (ms) runs out. */
+    hold: null as { x: number; y: number; until: number } | null,
+    /**
+     * The enemy's side, shown only while one of your shots is reaching it: their tower (as it stood, then as it
+     * is left) and slingshot fade in as the ball nears the fog, and out again after the impact.
+     */
+    reveal: null as { tower: Tower; placement: Placement; fade: number; until: number } | null,
   })
 
   // Begin a new shot animation when a new shot arrives.
   useEffect(() => {
     if (!shot) return
     const a = anim.current
-    a.shot = { active: shot, startedAt: performance.now() }
+    a.shot = { active: shot, elapsed: 0 }
+    a.hold = null
+    if (shot.dir === 'in') a.reveal = null // the fog is back for good before the enemy fires
     if (shot.dir === 'out') {
       // The pouch is let go. (The enemy's slingshot is off screen, so its shots just arrive.)
       a.pull = Math.min(a.pull, 1)
@@ -130,10 +174,29 @@ export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, o
     let assets: Assets | null = null
 
     /** Beyond this screen x nothing may be seen: the edge of the screen, unless the enemy tower is being peeked at. */
-    const visibleLimit = () => (live.current.enemyTower ? Infinity : VIEW_EDGE_SCREEN_X)
+    const visibleLimit = () => (live.current.enemyTower || anim.current.reveal ? Infinity : VIEW_EDGE_SCREEN_X)
 
     const variantOf = (t: Tower, cell: Cell) => hash3(t.x, cell.row, cell.col) % blockVariants(t.material)
     const lookOf = (t: Tower, cell: Cell): BlockLook => ({ damage: damageLevel(t, cell), rotten: isSoft(t, cell) })
+
+    /**
+     * Block sprites are made the first time they are drawn. The enemy's tower is only ever drawn during a reveal, so
+     * without this every look of every block would be painted in the one frame it appears. Do it up front, a few at a time.
+     */
+    let warmTimer: ReturnType<typeof setTimeout> | undefined
+    const warmBlocks = (as: Assets) => {
+      clearTimeout(warmTimer)
+      const jobs: [MaterialId, number, BlockLook][] = []
+      for (const material of Object.keys(MATERIALS) as MaterialId[])
+        for (let v = 0; v < blockVariants(material); v++)
+          for (const damage of [0, 1, 2] as const) for (const rotten of [false, true]) jobs.push([material, v, { damage, rotten }])
+      const step = () => {
+        if (as !== assets) return // the sprites were rebuilt at another scale meanwhile
+        for (let i = 0; i < 3 && jobs.length; i++) as.blockSprite(...jobs.shift()!)
+        if (jobs.length) warmTimer = setTimeout(step, 24)
+      }
+      warmTimer = setTimeout(step, 24)
+    }
 
     const causedCollapse = (r: ShotResult) => (r.hit?.collapsed.length ?? 0) > 0
 
@@ -143,6 +206,8 @@ export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, o
       chunks(a.particles, x, y + 2, 9, 'earth', 0.9)
       dustPlume(a.particles, x, y, 8, 12, 'dirt')
       dustPlume(a.particles, x, y, 3, 14)
+      // A scorch mark out in the enemy's half would outlast the reveal and give away where it was.
+      if (x > VIEW_EDGE_SCREEN_X && !live.current.enemyTower) return
       const decals = a.decals[dir]
       decals.push(x)
       if (decals.length > MAX_DECALS) decals.shift()
@@ -191,8 +256,16 @@ export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, o
       }
       // Remember the trail for review (nothing past the right edge is shown).
       const trails = a.trails[dir]
-      trails.push(active.path)
+      trails.push(live.current.enemyTower ? active.path : active.path.filter((p) => p.x <= VIEW_EDGE_SCREEN_X))
       if (trails.length > 4) trails.shift()
+      // Linger on where it landed (but never beyond the visible edge).
+      const end = active.path[active.path.length - 1]
+      const at = detail ? { x: detail.mapX(detail.result.impact.x), y: detail.result.impact.y } : end
+      a.hold = { x: Math.min(at.x, limit), y: GY - at.y, until: performance.now() + IMPACT_HOLD_MS }
+      if (active.reveal && a.reveal && detail) {
+        a.reveal.tower = detail.result.towerAfter // blocks that broke are gone
+        a.reveal.until = performance.now() + REVEAL_LINGER_MS
+      }
       a.shot = null
       live.current.onShotEnd(active.id)
     }
@@ -204,6 +277,11 @@ export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, o
       const t = now / 1000
       const a = anim.current
       const { myTower, enemyTower, angle, power, canAim, aimed, myTeam, enemyTeam } = live.current
+      const act = a.shot?.active
+      if (act?.reveal && act.detail && !a.reveal) {
+        const tower = act.detail.towerBefore
+        a.reveal = { tower, placement: enemyPlacement(tower), fade: 0, until: Infinity }
+      }
       const maxX = visibleLimit()
 
       // --- size canvas to its CSS box and (re)build sprites for this scale ---
@@ -221,16 +299,24 @@ export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, o
         canvas.height = Math.round(cssH * dpr)
       }
       const scale = (cssW / viewW) * dpr
-      if (!assets || Math.abs(assets.scale - scale) / scale > 0.02) assets = createAssets(scale)
+      if (!assets || Math.abs(assets.scale - scale) / scale > 0.02) {
+        assets = createAssets(scale)
+        warmBlocks(assets)
+      }
 
       // --- advance projectile ---
       let projectile: Vec | null = null
       let pathIndex = 0
       if (a.shot) {
         const path = a.shot.active.path
-        // The frame timestamp can predate `startedAt` by a hair, so never go below the first point.
-        pathIndex = Math.max(0, Math.floor(((now - a.shot.startedAt) / 1000) * PATH_HZ * PLAYBACK_SPEED))
-        if (pathIndex >= path.length - 1) {
+        a.shot.elapsed += dt
+        pathIndex = Math.max(0, Math.floor(a.shot.elapsed * PATH_HZ * PLAYBACK_SPEED))
+        if (pathIndex >= path.length - 1 && a.shot.active.open) {
+          // The rest of the flight is still on its way from the other phone: wait at the end of what is known.
+          pathIndex = path.length - 1
+          a.shot.elapsed = pathIndex / (PATH_HZ * PLAYBACK_SPEED)
+          projectile = path[pathIndex]
+        } else if (pathIndex >= path.length - 1) {
           finishShot(a.shot.active)
         } else {
           projectile = path[pathIndex]
@@ -247,9 +333,62 @@ export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, o
       } else if (canAim && (a.dragging || aimed)) a.pull = a.dragging ? 1 : Math.min(1, a.pull + dt * 6)
       else a.pull = Math.max(0, a.pull - dt * 8)
 
+      // --- the enemy's side: appears as the ball nears the fog, goes again once the impact has had its moment ---
+      const rv = a.reveal
+      if (rv) {
+        const arriving = !!projectile && projectile.x > VIEW_EDGE_SCREEN_X - REVEAL_LEAD_IN
+        const showing = a.shot ? arriving : now < rv.until
+        rv.fade += ((showing ? 1 : 0) - rv.fade) * (1 - Math.exp(-dt * 5))
+        // Gone only once the fog is back and the camera is home again, so the view's limits do not jump.
+        if (!a.shot && now >= rv.until && rv.fade < 0.01 && a.cam.z < 1.02 && a.cam.x0 < 2) a.reveal = null
+      }
+      const revealed = !!a.reveal
+
+      // --- camera: follow the ball, close in for the impact, then ease home ---
+      // Always home while peeking at the enemy or while you can aim, so aiming never happens through a moved camera.
+      const cam = a.cam
+      let tz = 1
+      let tx = viewW / 2
+      let ty = WORLD_H / 2
+      if (!enemyTower && !canAim) {
+        if (projectile) {
+          tz = CAM_ZOOM
+          // Aim at where the ball will be a moment from now, and at the impact itself once the flight is near its end.
+          const path = a.shot!.active.path
+          const ahead = path[Math.min(pathIndex + CAM_LOOKAHEAD, path.length - 1)]
+          tx = ahead.x
+          ty = GY - ahead.y
+          if (a.shot?.active.dir === 'in') {
+            // An incoming ball is heading for your tower: stay by the tower and lean a little towards the ball, rather
+            // than chasing it into the sky or in from the far edge.
+            tx = TOWER_FOCUS_X + (Math.min(projectile.x, VIEW_EDGE_SCREEN_X) - TOWER_FOCUS_X) * 0.3
+            ty = ty * 0.35 + (GY - 130) * 0.65
+          }
+        } else if (a.hold && now < a.hold.until) {
+          tz = CAM_ZOOM
+          tx = a.hold.x
+          ty = a.hold.y
+        }
+      }
+      // The camera never aims past what it can currently show (the fog edge, until the reveal has opened it up). Aiming
+      // past it would store up a gap that is released in one go the moment the reveal widens the view.
+      tx = Math.min(tx, Math.max(cam.reach, viewW) - viewW / (2 * cam.z))
+      const kz = 1 - Math.exp(-dt * CAM_ZOOM_RATE)
+      const kp = 1 - Math.exp(-dt * CAM_POS_RATE)
+      cam.z += (tz - cam.z) * kz
+      cam.cx += (tx - cam.cx) * kp
+      cam.cy += (ty - cam.cy) * kp
+      // Keep the view inside the visible area: the fog edge, unless the enemy's side is being revealed.
+      cam.reach += ((revealed ? WORLD_W : viewW) - cam.reach) * (1 - Math.exp(-dt * CAM_REACH_RATE))
+      cam.reach = Math.max(cam.reach, viewW)
+      cam.x0 = Math.max(0, Math.min(cam.cx - viewW / (2 * cam.z), cam.reach - viewW / cam.z))
+      cam.y0 = Math.min(Math.max(cam.cy - WORLD_H / (2 * cam.z), 0), WORLD_H - WORLD_H / cam.z)
+
       // --- scene ---
       ctx.setTransform(scale, 0, 0, scale, 0, 0)
       ctx.save()
+      ctx.scale(cam.z, cam.z)
+      ctx.translate(-cam.x0, -cam.y0)
       if (a.shake > 0) ctx.translate(rand(-a.shake, a.shake) * 0.5, rand(-a.shake, a.shake) * 0.5)
 
       ctx.drawImage(assets.bg, -BG_MARGIN, -BG_MARGIN, WORLD_W + BG_MARGIN * 2, WORLD_H + BG_MARGIN * 2)
@@ -278,7 +417,20 @@ export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, o
       // your own tower is always on screen; the enemy's only while peeking, else just a pointer to where it is
       drawTower(ctx, assets, myTower, MY_PLACEMENT, t, TEAMS[myTeam].main)
       if (enemyTower) drawTower(ctx, assets, enemyTower, enemyPlacement(enemyTower), t, TEAMS[enemyTeam].main)
-      else drawEnemyDirection(ctx, viewW, t, enemyTeam)
+      else {
+        const fade = a.reveal?.fade ?? 0
+        if (fade < 0.99) {
+          ctx.globalAlpha = 1 - fade
+          drawEnemyDirection(ctx, viewW, t, enemyTeam)
+          ctx.globalAlpha = 1
+        }
+        if (a.reveal && fade > 0.01) {
+          ctx.globalAlpha = fade
+          drawEnemySlingshot(ctx, a.reveal.placement, t, enemyTeam)
+          drawTower(ctx, assets, a.reveal.tower, a.reveal.placement, t, TEAMS[enemyTeam].main)
+          ctx.globalAlpha = 1
+        }
+      }
 
       // previous trails (review): yours in your team's colour, the enemy's in theirs
       for (const [dir, color] of [['out', TEAMS[myTeam].lightRgb], ['in', TEAMS[enemyTeam].lightRgb]] as const) {
@@ -383,6 +535,17 @@ export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, o
       }
     }
 
+    /** Their slingshot stands between their tower and you, like yours does: the same one, turned to face you. */
+    const drawEnemySlingshot = (c: CanvasRenderingContext2D, placement: Placement, t: number, team: Team) => {
+      const gap = SLING_ANCHOR.x - (MY_TOWER_X + TOWER_WIDTH) // from the tower's near face to the slingshot, as on your side
+      c.save()
+      c.translate(placement.screenX - gap, 0)
+      c.scale(-1, 1)
+      c.translate(-SLING_ANCHOR.x, 0)
+      drawSlingshot(c, { aim: { angle: 45, power: 50 }, pull: 0, loaded: false, time: t, team: TEAMS[team] })
+      c.restore()
+    }
+
     /** The enemy is off the right edge of the screen: a glow and drifting arrows, in their colour, say so. */
     const drawEnemyDirection = (c: CanvasRenderingContext2D, viewW: number, t: number, team: Team) => {
       const style = TEAMS[team]
@@ -419,7 +582,10 @@ export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, o
     }
 
     raf = requestAnimationFrame(frame)
-    return () => cancelAnimationFrame(raf)
+    return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(warmTimer)
+    }
   }, [])
 
   // ---- pulling the slingshot with a finger or the mouse ----
@@ -427,8 +593,12 @@ export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, o
   const worldPoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!
     const rect = canvas.getBoundingClientRect()
-    const viewW = anim.current.viewW
-    return { x: ((e.clientX - rect.left) / rect.width) * viewW, y: ((e.clientY - rect.top) / rect.height) * WORLD_H }
+    const { viewW, cam } = anim.current
+    // Undo the camera so the pointer lands on the right world point even while it is still easing home.
+    return {
+      x: cam.x0 + (((e.clientX - rect.left) / rect.width) * viewW) / cam.z,
+      y: cam.y0 + (((e.clientY - rect.top) / rect.height) * WORLD_H) / cam.z,
+    }
   }
   const near = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const { angle, power } = live.current

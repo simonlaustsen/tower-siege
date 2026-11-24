@@ -147,8 +147,9 @@ export class Peer {
     if (this._over) return reject('the game is over')
     if (this._myTurn) return reject('it is not your turn to fire')
 
+    const before = this.defender.tower
     const resolution = this.defender.handleFire(input)
-    const reply: ResultMessage = { type: 'result', id: msg.id, feedback: resolution.feedback, towerDown: resolution.towerDown }
+    const reply: ResultMessage = { type: 'result', id: msg.id, feedback: resolution.feedback, reveal: before, towerDown: resolution.towerDown }
     this.replies.set(msg.id, reply)
     if (this.replies.size > REPLY_CACHE) this.replies.delete(this.replies.keys().next().value!)
     link.send(reply)

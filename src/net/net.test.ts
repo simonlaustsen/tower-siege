@@ -51,12 +51,18 @@ describe('peers', () => {
     expect(reply.towerDown).toBe(direct.towerDown)
   })
 
-  it('leaks nothing about the tower in a reply', async () => {
-    const { a } = pair()
+  it('answers with the tower as it stood before the shot, and nothing else about it', async () => {
+    const { a, b } = pair()
+    const before = structuredClone(b.tower)
     const reply = await a.fire(38, 84)
-    expect(Object.keys(reply).sort()).toEqual(['feedback', 'id', 'towerDown', 'type'])
+    expect(Object.keys(reply).sort()).toEqual(['feedback', 'id', 'reveal', 'towerDown', 'type'])
+    // The snapshot is the tower before the hit, so the attacker can replay the shot itself.
+    expect(reply.reveal).toEqual(before)
+    const replay = simulateShot(reply.reveal, { angle: 38, power: 84 })
+    expect(replay.towerAfter).toEqual(b.tower)
+    // No flight data, impact point or after-the-shot state goes over the wire.
     const wire = JSON.stringify(reply)
-    for (const secret of ['hp', 'path', 'impact', '750', 'towerAfter']) expect(wire).not.toContain(secret)
+    for (const secret of ['path', 'impact', 'towerAfter']) expect(wire).not.toContain(secret)
   })
 
   it('only lets you fire on your turn, and alternates', async () => {

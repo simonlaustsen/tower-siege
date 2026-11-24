@@ -6,6 +6,7 @@ import {
   MAX_POWER,
   MIN_ANGLE,
   MIN_POWER,
+  WORLD_W,
 } from './game/constants'
 import { previewFlight } from './game/attackerView'
 import '@fontsource/lilita-one/latin-400.css'
@@ -59,6 +60,24 @@ interface GameProps {
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+
+/** A ball that has flown this far past the enemy's side is out of the picture: its flight ends there. */
+const WORLD_END_X = WORLD_W + 60
+
+/**
+ * Completes the flight of a shot that was waiting for the defender's reply. The snapshot of their tower in it
+ * lets this phone replay the whole shot (the physics is deterministic) and show it with full effects.
+ */
+function revealFlight(active: ActiveShot, tower: Tower, input: { angle: number; power: number }) {
+  const result = simulateShot(tower, input)
+  const path = mapPath(result.path, outwardMapX)
+  const end = path.findIndex((p) => p.x > WORLD_END_X)
+  active.path = end < 0 ? path : path.slice(0, end + 1)
+  active.detail = { result, towerBefore: tower, placement: enemyPlacement(tower), mapX: outwardMapX }
+  active.groundLanding = false
+  active.reveal = true
+  active.open = false
+}
 
 function Stepper(props: {
   label: string
@@ -300,7 +319,16 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
       }
     } else {
       const flight = previewFlight(input)
-      active = { id, dir: 'out', path: mapPath(flight.path, outwardMapX), groundLanding: flight.landsInView, detail: null }
+      // Up to the fog the flight is the same whatever the enemy tower looks like. Past it, the ball waits for the
+      // defender's reply, which brings the snapshot the rest of the flight is replayed from.
+      active = {
+        id,
+        dir: 'out',
+        path: mapPath(flight.path, outwardMapX),
+        groundLanding: flight.landsInView,
+        detail: null,
+        open: !flight.landsInView,
+      }
     }
 
     const pending: InFlight = { id, angle: input.angle, power: input.power, active, animationDone: false, reply: null }
@@ -314,11 +342,13 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
       .then((reply) => {
         if (inFlight.current !== pending) return // new game started meanwhile
         pending.reply = reply
+        if (active.open) revealFlight(active, reply.reveal, input)
         settle()
       })
       .catch((err: Error) => {
         if (inFlight.current !== pending) return
         inFlight.current = null
+        active.open = false
         setShot(null)
         setWaiting(false)
         setError(err.message)
@@ -333,7 +363,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
       const mine = inFlight.current
       if (mine && mine.id === id) {
         mine.animationDone = true
-        if (mine.active.detail) setPeekTower(mine.active.detail.result.towerAfter)
+        if (mine.active.detail && !mine.active.reveal) setPeekTower(mine.active.detail.result.towerAfter)
         if (!mine.reply) setWaiting(true)
         settle()
         return

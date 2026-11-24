@@ -1,13 +1,19 @@
+import { TOWER_COLS, TOWER_ROWS } from '../game/constants'
 import type { Feedback } from '../game/feedback'
+import { MATERIALS } from '../game/materials'
+import type { Tower } from '../game/tower'
 
 /**
  * Wire protocol between two phones.
  *
  * Hidden-information rule: a tower exists only on its owner's phone. The attacker
- * sends a shot command; the defender resolves it against its own tower and sends
- * back ONLY qualitative feedback. Never add paths, positions or hit points here.
+ * sends a shot command; the defender resolves it against its own tower and answers with
+ * qualitative feedback, plus a one-off snapshot of the tower as it stood when the shot
+ * arrived (`reveal`), so the attacker's screen can follow the ball in and replay the hit.
+ * The attacker's screen shows that snapshot only for the length of the replay and keeps nothing.
+ * Never add anything else here (no standing positions, no hit points between shots).
  */
-export const PROTOCOL_VERSION = 1
+export const PROTOCOL_VERSION = 2
 
 export interface FireMessage {
   type: 'fire'
@@ -20,6 +26,8 @@ export interface ResultMessage {
   type: 'result'
   id: number
   feedback: Feedback
+  /** The defender's tower as it stood just before this shot, for the attacker's replay of the hit. */
+  reveal: Tower
   /** The defender's tower has collapsed: the attacker wins. */
   towerDown: boolean
 }
@@ -49,6 +57,17 @@ const FEEDBACK_TONES = new Set(['miss', 'hit', 'big'])
 const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0
 const isStr = (v: unknown, max = 200): v is string => typeof v === 'string' && v.length <= max
 
+const isGrid = (v: unknown): v is number[][] =>
+  Array.isArray(v) &&
+  v.length === TOWER_ROWS &&
+  v.every((row) => Array.isArray(row) && row.length === TOWER_COLS && row.every((n) => typeof n === 'number' && Number.isFinite(n)))
+
+function isTower(v: unknown): v is Tower {
+  if (typeof v !== 'object' || v === null) return false
+  const t = v as Record<string, unknown>
+  return typeof t.x === 'number' && Number.isFinite(t.x) && typeof t.material === 'string' && t.material in MATERIALS && isGrid(t.hp) && isGrid(t.maxHp)
+}
+
 function isFeedback(v: unknown): v is Feedback {
   if (typeof v !== 'object' || v === null) return false
   const f = v as Record<string, unknown>
@@ -63,7 +82,7 @@ export function isMessage(v: unknown): v is Message {
     case 'fire':
       return isInt(m.id) && typeof m.angle === 'number' && typeof m.power === 'number'
     case 'result':
-      return isInt(m.id) && typeof m.towerDown === 'boolean' && isFeedback(m.feedback)
+      return isInt(m.id) && typeof m.towerDown === 'boolean' && isFeedback(m.feedback) && isTower(m.reveal)
     case 'rejected':
       return isInt(m.id) && isStr(m.reason)
     case 'hello':
