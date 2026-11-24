@@ -82,7 +82,8 @@ leave the screen; the enemy's shots arrive from the right edge and hit your towe
 two screens side by side can be told apart even though both play left to right. Each phone draws its own
 tower flag, cannon banner and shot trails in its team colour and the enemy in the other, and a soft halo
 around the battlefield glows in the colour of whoever's turn it is: the same colour on both phones.
-When the turn changes the halo closes in towards the middle (0.4 s) as the signal.
+The halo itself never moves; when the turn changes a blurred glow swells in from it towards the
+middle and drains back out (0.4 s) as the signal.
 
 **Callouts.** After each shot a few big words pop up over the battlefield in a bold, playful font
 (Lilita One, bundled with the app so it works offline): "Way short!", "A bit short!", "Just over!",
