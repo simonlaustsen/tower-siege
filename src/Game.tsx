@@ -8,7 +8,9 @@ import {
   MIN_POWER,
 } from './game/constants'
 import { previewFlight } from './game/attackerView'
-import type { Feedback } from './game/feedback'
+import '@fontsource/lilita-one/latin-400.css'
+import type { Feedback, FeedbackKind } from './game/feedback'
+import { shoutFor, type Shout } from './game/shout'
 import { simulateShot } from './game/physics'
 import { otherTeam, TEAMS, type Team } from './game/teams'
 import { flightOf, initialEstimate, landingX, narrow, resultOf, type Flight } from './game/rangeFinder'
@@ -27,6 +29,7 @@ type Phase = 'aim' | 'shooting' | 'result' | 'enemy-turn' | 'incoming' | 'enemy-
 
 const RESULT_MS = 1600 // how long your shot's feedback stays up before the enemy's turn begins
 const ENEMY_RESULT_MS = 1600 // how long the enemy shot's outcome stays up before your turn
+const SHOUT_MS = 1500 // how long the big callout over the battlefield stays up
 
 interface HistoryEntry {
   n: number
@@ -143,6 +146,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
   const [shot, setShot] = useState<ActiveShot | null>(null)
   const [waiting, setWaiting] = useState(false)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
+  const [shout, setShout] = useState<(Shout & { id: number; whose: 'mine' | 'enemy' }) | null>(null)
   const [enemyFeedback, setEnemyFeedback] = useState<Feedback | null>(null)
   const [enemyShots, setEnemyShots] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -165,6 +169,16 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
   const later = useCallback((fn: () => void, ms: number) => {
     timers.current.push(setTimeout(fn, ms))
   }, [])
+  /** A few big words over the battlefield: what the shot just did. */
+  const shoutId = useRef(0)
+  const showShout = useCallback(
+    (kind: FeedbackKind, whose: 'mine' | 'enemy') => {
+      const id = ++shoutId.current
+      setShout({ id, whose, ...shoutFor(kind, whose) })
+      later(() => setShout((s) => (s?.id === id ? null : s)), SHOUT_MS)
+    },
+    [later],
+  )
   const setMyTower = useCallback((t: Tower) => {
     myTowerRef.current = t
     setMyTowerState(t)
@@ -187,6 +201,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
       setShot(null)
       setWaiting(false)
       setFeedback(null)
+      setShout(null)
       setEnemyFeedback(null)
       setEnemyShots(0)
       setError(null)
@@ -245,6 +260,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
     setShot(null)
     setWaiting(false)
     setFeedback(fb)
+    showShout(fb.kind, 'mine')
     setHistory((h) => [
       { n: h.length + 1, angle: p.angle, power: p.power, feedback: fb, flight: flightOf({ angle: p.angle, power: p.power }) },
       ...h,
@@ -259,7 +275,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
       go('enemy-turn')
       startIncomingIfReady()
     }, RESULT_MS)
-  }, [go, later, startIncomingIfReady])
+  }, [go, later, showShout, startIncomingIfReady])
 
   const fire = useCallback(() => {
     if (phaseRef.current !== 'aim') return
@@ -325,6 +341,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
         setMyTower(resolution.result.towerAfter)
         setShot(null)
         setEnemyFeedback(resolution.feedback)
+        showShout(resolution.feedback.kind, 'enemy')
         setEnemyShots((n) => n + 1)
         if (resolution.towerDown) {
           setOutcome('lost')
@@ -335,7 +352,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
         later(() => go('aim'), ENEMY_RESULT_MS)
       }
     },
-    [settle, go, later, setMyTower],
+    [settle, go, later, showShout, setMyTower],
   )
 
   /** "New game" against the computer starts at once; online it asks for a rematch. */
@@ -387,10 +404,10 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
     banner = {
       tone: 'idle',
       title: 'Your turn',
-      text: history[0] ? `Last shot: ${history[0].feedback.title}` : 'Set your angle and power, then fire!',
+      text: history[0] ? `Last shot: ${shoutFor(history[0].feedback.kind, 'mine').text}` : 'Set your angle and power, then fire!',
     }
   } else if (phase === 'shooting') banner = { tone: 'idle', title: waiting ? 'Waiting for the other phone…' : 'Shot away…' }
-  else if (phase === 'result' && feedback) banner = { tone: feedback.tone, title: feedback.title, text: feedback.hint }
+  else if (phase === 'result' && feedback) banner = { tone: feedback.tone, title: feedback.hint }
   else if (phase === 'enemy-turn') banner = { tone: 'idle', title: 'Enemy is aiming…', text: 'Brace yourself.' }
   else if (phase === 'incoming') banner = { tone: 'idle', title: 'Incoming!' }
   else if (phase === 'enemy-result' && enemyFeedback) {
@@ -429,7 +446,8 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
       </header>
 
       <div className="field" data-wide={peek}>
-      <div className="stage" data-turn={turnTeam} data-pulse={outcome === null && turnTeam !== undefined}>
+      <div className="stage-frame">
+      <div className="stage">
         <GameCanvas
           key={gameId}
           myTower={myTower}
@@ -446,6 +464,16 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
           {banner.title && <strong>{banner.title}</strong>}
           {banner.text && <span>{banner.text}</span>}
         </div>
+        {shout && !outcome && (
+          <div
+            key={shout.id}
+            className={`shout ${shout.whose} ${shout.tone}`}
+            style={{ '--shout-color': TEAMS[enemyTeam].light, animationDuration: `${SHOUT_MS}ms` } as React.CSSProperties}
+            aria-hidden="true"
+          >
+            {shout.text}
+          </div>
+        )}
         {outcome && (
           <div className="overlay">
             <div className="card">
@@ -495,10 +523,13 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
           </div>
         )}
       </div>
+      {/* The halo is its own element, outside the clipped stage. A new key per team replays its close-in animation. */}
+      {turnTeam && <div key={turnTeam} className="halo" data-turn={turnTeam} data-pulse={outcome === null} aria-hidden="true" />}
+      </div>
       {!peek && (
         <RangeFinder
           estimate={estimate}
-          shots={[...history].reverse().map((h) => ({ n: h.n, landing: h.flight.landing, result: resultOf(h.feedback.kind) }))}
+          shots={[...history].reverse().map((h) => ({ n: h.n, angle: h.angle, power: h.power, landing: h.flight.landing, result: resultOf(h.feedback.kind) }))}
           aim={aimLanding}
           active={canAct}
           enemy={enemyTeam}
@@ -512,36 +543,6 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
         <button type="button" className="fire" disabled={!canAct} onClick={fire}>
           {canAct ? 'FIRE!' : phase === 'shooting' ? 'Firing…' : phase === 'over' ? 'Game over' : 'Enemy turn…'}
         </button>
-      </section>
-
-      <section className="history">
-        <h2>Your shots</h2>
-        {history.length === 0 ? (
-          <p className="empty">No shots yet.</p>
-        ) : (
-          <ol>
-            {history.map((h) => (
-              <li key={h.n} className={h.feedback.tone}>
-                <span className="n">#{h.n}</span>
-                <span className="params">
-                  {h.angle}° · {h.power}%
-                </span>
-                <span className="result">{h.feedback.title}</span>
-                <button
-                  type="button"
-                  className="reuse"
-                  disabled={!canAct}
-                  onClick={() => {
-                    setAngle(h.angle)
-                    setPower(h.power)
-                  }}
-                >
-                  Reuse
-                </button>
-              </li>
-            ))}
-          </ol>
-        )}
       </section>
     </div>
   )

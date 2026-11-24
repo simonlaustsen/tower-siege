@@ -279,67 +279,6 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* ---- history ---- */
-.history {
-  background: var(--panel);
-  border-radius: 14px;
-  padding: 12px 14px;
-}
-.history h2 {
-  margin: 0 0 8px;
-  font-size: 0.85rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.history .empty {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-.history ol {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 220px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.history li {
-  display: grid;
-  grid-template-columns: 2.4em 7.5em 1fr auto;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: var(--panel-2);
-  border-left: 4px solid var(--accent-2);
-  font-size: 0.9rem;
-}
-.history li.hit {
-  border-left-color: #f4a261;
-}
-.history li.big {
-  border-left-color: #ff6b6b;
-}
-.history .n {
-  color: var(--muted);
-}
-.history .params {
-  font-variant-numeric: tabular-nums;
-}
-.reuse {
-  background: transparent;
-  border: 1px solid var(--muted);
-  color: var(--text);
-  border-radius: 6px;
-  padding: 3px 8px;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-
 @media (max-width: 560px) {
   .app {
     padding-left: 10px;
@@ -375,10 +314,6 @@ button:disabled {
   }
   .integrity-num {
     min-width: 2.4em;
-  }
-  .history li {
-    grid-template-columns: 2.2em 6.8em 1fr auto;
-    font-size: 0.82rem;
   }
 }
 
@@ -639,41 +574,65 @@ textarea {
 }
 
 /* ---- turn halo: a soft glow in the colour of whoever's turn it is ---- */
-.stage {
+.stage-frame {
+  position: relative;
+}
+.halo {
   --halo: 0, 0, 0;
-}
-.stage[data-turn='blue'] {
-  --halo: 63, 140, 255;
-}
-.stage[data-turn='red'] {
-  --halo: 255, 79, 79;
-}
-.stage[data-turn] {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: 14px;
+  pointer-events: none;
   box-shadow:
     0 0 0 3px rgba(var(--halo), 0.85),
-    0 0 26px 6px rgba(var(--halo), 0.5),
-    0 6px 24px rgba(0, 0, 0, 0.4);
+    0 0 26px 6px rgba(var(--halo), 0.5);
+  /* when the turn changes the halo closes in towards the middle (0.4s), then pulses slowly */
+  animation: halo-contract 0.4s ease-out;
 }
-.stage[data-pulse='true'] {
-  animation: halo-pulse 2.6s ease-in-out infinite;
+.halo[data-turn='blue'] {
+  --halo: 63, 140, 255;
+}
+.halo[data-turn='red'] {
+  --halo: 255, 79, 79;
+}
+.halo[data-pulse='true'] {
+  animation:
+    halo-contract 0.4s ease-out,
+    halo-pulse 2.6s ease-in-out 0.4s infinite;
+}
+@keyframes halo-contract {
+  0% {
+    transform: scale(1.12);
+    opacity: 0.2;
+    box-shadow:
+      0 0 0 3px rgba(var(--halo), 0.6),
+      0 0 60px 22px rgba(var(--halo), 0.7);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow:
+      0 0 0 3px rgba(var(--halo), 0.85),
+      0 0 26px 6px rgba(var(--halo), 0.5);
+  }
 }
 @keyframes halo-pulse {
   0%,
   100% {
     box-shadow:
       0 0 0 3px rgba(var(--halo), 0.7),
-      0 0 18px 3px rgba(var(--halo), 0.38),
-      0 6px 24px rgba(0, 0, 0, 0.4);
+      0 0 18px 3px rgba(var(--halo), 0.38);
   }
   50% {
     box-shadow:
       0 0 0 3px rgba(var(--halo), 0.95),
-      0 0 36px 12px rgba(var(--halo), 0.62),
-      0 6px 24px rgba(0, 0, 0, 0.4);
+      0 0 36px 12px rgba(var(--halo), 0.62);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .stage[data-pulse='true'] {
+  .halo,
+  .halo[data-pulse='true'] {
     animation: none;
   }
 }
@@ -804,4 +763,79 @@ textarea {
   margin: 4px 0 0;
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+/* ---- the big callout over the battlefield ---- */
+.shout {
+  position: absolute;
+  left: 50%;
+  top: 27%;
+  z-index: 3;
+  max-width: 94%;
+  text-align: center;
+  text-wrap: balance;
+  pointer-events: none;
+  font-family: 'Lilita One', 'Arial Rounded MT Bold', 'Chalkboard SE', system-ui, sans-serif;
+  font-weight: 400;
+  font-size: clamp(2rem, 9.5vw, 4.2rem);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--shout-color, #fff);
+  -webkit-text-stroke: 0.1em #1b1230;
+  paint-order: stroke fill;
+  text-shadow:
+    0 0.07em 0 #1b1230,
+    0 0.14em 0.22em rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%) rotate(-3deg);
+  animation: shout-pop 1.5s ease-out both;
+}
+.shout.mine.miss {
+  color: #ffffff;
+}
+.shout.mine.hit {
+  color: #ffd34d;
+}
+.shout.big {
+  color: #7dffb0;
+  font-size: clamp(2.4rem, 11.5vw, 5rem);
+}
+.shout.enemy.big {
+  color: #ff8f8f;
+}
+@keyframes shout-pop {
+  0% {
+    transform: translate(-50%, -50%) scale(0.3) rotate(-14deg);
+    opacity: 0;
+  }
+  14% {
+    transform: translate(-50%, -50%) scale(1.25) rotate(-1deg);
+    opacity: 1;
+  }
+  24% {
+    transform: translate(-50%, -50%) scale(0.93) rotate(-4deg);
+  }
+  34%,
+  80% {
+    transform: translate(-50%, -50%) scale(1) rotate(-3deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -64%) scale(1) rotate(-3deg);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shout {
+    animation-name: shout-fade;
+  }
+  @keyframes shout-fade {
+    0%,
+    80% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
 }

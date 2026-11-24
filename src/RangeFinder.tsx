@@ -5,6 +5,8 @@ import { RULER_END, RULER_START, type TowerEstimate } from './game/rangeFinder'
 /** One of your shots, as a mark on the ruler. */
 export interface RangeShot {
   n: number
+  angle: number
+  power: number
   /** Where it lands when nothing is in the way (physics x). */
   landing: number
   /** What it did: fell short of the tower, flew over it, touched it, or broke something. */
@@ -92,6 +94,7 @@ export default function RangeFinder({ estimate, shots, aim, active, enemy }: Pro
         {/* where each of your shots came down */}
         {shots.map((s) => (
           <g key={s.n} className={`rf-shot ${s.result}`}>
+            <title>{`Shot ${s.n}: ${s.angle}° at ${s.power}%`}</title>
             <circle cx={at(s.landing)} cy={LINE_Y} r="7.5" />
             <text x={at(s.landing)} y={LINE_Y + 3.5} textAnchor="middle">
               {s.n}

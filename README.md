@@ -82,12 +82,20 @@ leave the screen; the enemy's shots arrive from the right edge and hit your towe
 two screens side by side can be told apart even though both play left to right. Each phone draws its own
 tower flag, cannon banner and shot trails in its team colour and the enemy in the other, and a soft halo
 around the battlefield glows in the colour of whoever's turn it is: the same colour on both phones.
+When the turn changes the halo closes in towards the middle (0.4 s) as the signal.
+
+**Callouts.** After each shot a few big words pop up over the battlefield in a bold, playful font
+(Lilita One, bundled with the app so it works offline): "Way short!", "A bit short!", "Just over!",
+"Hit!", "Smash!", "Timber!"; and for the enemy's shots on you "Phew!", "Close one!", "Ouch!"
+(`src/game/shout.ts`). The longer hint ("Add a little power") stays as one line under the battlefield.
+There is no shot log any more: the range finder shows where each shot came down, and hovering a mark
+shows its angle and power.
 
 **Range finder.** Under the scene, a ruler (metres from your cannon) shows a shaded zone where the
 enemy tower can be. It is worked out from the rules (a tower stands 510-780 m away) and what your
 shots earned: a hint like "slightly short" or "just over the top" rules distances out
 (`src/game/rangeFinder.ts`). It never sees the tower, and a test checks the real tower always stays
-inside the zone. Your shots appear on the ruler where they came down (blue short, purple over, gold
+inside the zone. Your shots appear on the ruler where they came down (grey short, purple over, gold
 hit), and a ▼ shows where your current angle and power would come down, so you can line it up with the
 zone. The same metres are marked on the ground in the scene. The shot physics is unchanged (a cannon on the
 left, a tower on the right); `src/render/placement.ts` maps it onto the screen, mirroring enemy
