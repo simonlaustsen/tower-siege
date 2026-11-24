@@ -523,7 +523,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
           </div>
         )}
       </div>
-      {/* The halo is its own element, outside the clipped stage. A new key per team replays its swell animation. */}
+      {/* The halo is its own element, outside the clipped stage. A new key per team replays its wash animation. */}
       {turnTeam && <div key={turnTeam} className="halo" data-turn={turnTeam} data-pulse={outcome === null} aria-hidden="true" />}
       </div>
       {!peek && (
