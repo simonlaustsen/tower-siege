@@ -18,10 +18,10 @@ describe('physics', () => {
     const r = simulateShot(t, { angle: 45, power: 60 })
     const v = 0.6 * MAX_SPEED
     const m = muzzlePosition(45)
-    // Launched from a raised muzzle, so range is slightly longer than v²/g.
+    // Released from the fork, 100 up, so range is somewhat longer than v²/g.
     const flat = (v * v) / GRAVITY
     expect(r.impact.x - m.x).toBeGreaterThan(flat * 0.98)
-    expect(r.impact.x - m.x).toBeLessThan(flat * 1.15)
+    expect(r.impact.x - m.x).toBeLessThan(flat * 1.25)
   })
 
   it('damages, then destroys a block with repeated identical shots', () => {

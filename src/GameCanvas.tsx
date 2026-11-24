@@ -14,7 +14,8 @@ import { TEAMS, type Team } from './game/teams'
 import { damageLevel, forEachBlock, isSoft, type Cell, type Tower } from './game/tower'
 import { createAssets, type Assets } from './render/assets'
 import { blockVariants, type BlockLook } from './render/blocks'
-import { drawCannon } from './render/cannon'
+import { drawAimLine, drawSlingshot, pouchPoint, SLING_ANCHOR } from './render/slingshot'
+import { aimFromPull } from './game/sling'
 import { cellRect, displayCol, enemyPlacement, MY_PLACEMENT, type MapX, type Placement } from './render/placement'
 import {
   chunks,
@@ -22,7 +23,6 @@ import {
   dustPlume,
   fallingBlock,
   flightSmoke,
-  muzzleBlast,
   rand,
   sparks,
   updateParticles,
@@ -44,7 +44,7 @@ export interface ShotDetail {
 /** A shot as the canvas animates it: only what this screen is allowed to know. */
 export interface ActiveShot {
   id: number
-  /** 'out': you fired it, from your cannon. 'in': the enemy fired it, in from the right edge at your tower. */
+  /** 'out': you fired it, from your slingshot. 'in': the enemy fired it, in from the right edge at your tower. */
   dir: 'out' | 'in'
   /** Trajectory in screen coordinates. A shot of yours that leaves the screen stops at its right edge. */
   path: Vec[]
@@ -55,12 +55,21 @@ export interface ActiveShot {
 }
 
 interface Props {
-  /** Your own tower. Always shown, next to your cannon. */
+  /** Your own tower. Always shown, next to your slingshot. */
   myTower: Tower
   /** The enemy tower, shown only while peeking (dev). Otherwise null: it only exists on their phone. */
   enemyTower: Tower | null
-  /** Barrel angle of your cannon. */
+  /** The aim you have set: how far and in which direction the slingshot is pulled back. */
   angle: number
+  power: number
+  /** It is your turn: the ball sits in the pouch and can be pulled. */
+  canAim: boolean
+  /** An aim has been set (by dragging or the steppers): the pouch is held back. Otherwise it rests at the fork. */
+  aimed: boolean
+  /** The player pulled the pouch to a new aim. */
+  onAim: (angle: number, power: number) => void
+  /** The pouch was let go at this aim: fire. `null` when it was put back at the fork (cancel). */
+  onRelease: (aim: { angle: number; power: number } | null) => void
   /** Your colour, and the enemy's. */
   myTeam: Team
   enemyTeam: Team
@@ -72,14 +81,18 @@ const PLAYBACK_SPEED = 1.7 // x real-time; sim path is sampled at 120 Hz
 const PATH_HZ = 120
 const GY = WORLD_H - GROUND_MARGIN
 const MAX_DECALS = 6
+/** How close (world units) a press must be to the pouch or fork to pick it up. */
+const GRAB_RADIUS = 70
+/** Letting go with the pouch closer to the fork than this (world units) is a cancel, not a shot. */
+const CANCEL_PULL = 14
 
 /** Canvas renderer. Owns animation state (projectile, particles); game state comes via props. */
-export function GameCanvas({ myTower, enemyTower, angle, myTeam, enemyTeam, shot, onShotEnd }: Props) {
+export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, onAim, onRelease, myTeam, enemyTeam, shot, onShotEnd }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   // Latest props, readable from the long-lived animation loop.
-  const live = useRef({ myTower, enemyTower, angle, myTeam, enemyTeam, onShotEnd })
-  live.current = { myTower, enemyTower, angle, myTeam, enemyTeam, onShotEnd }
+  const live = useRef({ myTower, enemyTower, angle, power, canAim, aimed, onAim, onRelease, myTeam, enemyTeam, onShotEnd })
+  live.current = { myTower, enemyTower, angle, power, canAim, aimed, onAim, onRelease, myTeam, enemyTeam, onShotEnd }
 
   const anim = useRef({
     shot: null as { active: ActiveShot; startedAt: number } | null,
@@ -88,7 +101,11 @@ export function GameCanvas({ myTower, enemyTower, angle, myTeam, enemyTeam, shot
     decals: { out: [] as number[], in: [] as number[] }, // x of scorch marks on the ground
     particles: [] as Particle[],
     shake: 0,
-    recoil: 0,
+    /** How far the pouch is drawn back: 1 at full aim, 0 relaxed. Snaps to 0 on release. */
+    pull: 0,
+    released: false,
+    dragging: false,
+    viewW: VIEW_W,
   })
 
   // Begin a new shot animation when a new shot arrives.
@@ -97,10 +114,11 @@ export function GameCanvas({ myTower, enemyTower, angle, myTeam, enemyTeam, shot
     const a = anim.current
     a.shot = { active: shot, startedAt: performance.now() }
     if (shot.dir === 'out') {
-      // Your cannon fires. (The enemy's cannon is off screen, so its shots just arrive.)
-      a.recoil = 14
-      const [muzzle, next] = shot.path
-      muzzleBlast(a.particles, muzzle.x, muzzle.y, Math.atan2(next.y - muzzle.y, next.x - muzzle.x))
+      // The pouch is let go. (The enemy's slingshot is off screen, so its shots just arrive.)
+      a.pull = Math.min(a.pull, 1)
+      a.released = true
+      const [release] = shot.path
+      dustPlume(a.particles, release.x, release.y, 3, 10)
     }
   }, [shot])
 
@@ -185,12 +203,13 @@ export function GameCanvas({ myTower, enemyTower, angle, myTeam, enemyTeam, shot
       last = now
       const t = now / 1000
       const a = anim.current
-      const { myTower, enemyTower, angle, myTeam, enemyTeam } = live.current
+      const { myTower, enemyTower, angle, power, canAim, aimed, myTeam, enemyTeam } = live.current
       const maxX = visibleLimit()
 
       // --- size canvas to its CSS box and (re)build sprites for this scale ---
-      // The screen shows just your side (your tower and cannon); peeking at the enemy needs the whole field.
+      // The screen shows just your side (your tower and slingshot); peeking at the enemy needs the whole field.
       const viewW = enemyTower ? WORLD_W : VIEW_W
+      a.viewW = viewW
       const ratio = `${viewW} / ${WORLD_H}`
       if (canvas.style.aspectRatio !== ratio) canvas.style.aspectRatio = ratio
       const cssW = canvas.clientWidth
@@ -221,8 +240,12 @@ export function GameCanvas({ myTower, enemyTower, angle, myTeam, enemyTeam, shot
 
       updateParticles(a.particles, dt)
       a.shake = Math.max(0, a.shake - dt * 40)
-      a.recoil *= Math.exp(-dt * 6)
-      if (a.recoil < 0.05) a.recoil = 0
+      // The pouch rests at the fork until you pull it, springs forward when released, and eases back if you let it go.
+      if (a.released) {
+        a.pull = Math.max(0, a.pull - dt * 14)
+        if (a.pull === 0) a.released = false
+      } else if (canAim && (a.dragging || aimed)) a.pull = a.dragging ? 1 : Math.min(1, a.pull + dt * 6)
+      else a.pull = Math.max(0, a.pull - dt * 8)
 
       // --- scene ---
       ctx.setTransform(scale, 0, 0, scale, 0, 0)
@@ -272,7 +295,9 @@ export function GameCanvas({ myTower, enemyTower, angle, myTeam, enemyTeam, shot
         })
       }
 
-      drawCannon(ctx, assets, { angleDeg: angle, recoil: a.recoil, time: t, team: TEAMS[myTeam] })
+      const sling = { aim: { angle, power }, pull: a.pull, loaded: canAim && !a.released, time: t, team: TEAMS[myTeam] }
+      drawSlingshot(ctx, sling)
+      if (canAim && !a.released && a.pull > 0.05) drawAimLine(ctx, sling)
 
       // projectile
       if (projectile && a.shot && projectile.x <= maxX) {
@@ -315,7 +340,7 @@ export function GameCanvas({ myTower, enemyTower, angle, myTeam, enemyTeam, shot
     }
 
     const drawTower = (c: CanvasRenderingContext2D, as: Assets, tw: Tower, placement: Placement, t: number, flag: string) => {
-      // long dusk shadow stretching away from the low sun, towards the cannon
+      // long dusk shadow stretching away from the low sun, towards the slingshot
       let top = 0
       forEachBlock(tw, (cell) => (top = Math.max(top, (cell.row + 1) * BLOCK_SIZE)))
       if (top > 0) {
@@ -397,5 +422,67 @@ export function GameCanvas({ myTower, enemyTower, angle, myTeam, enemyTeam, shot
     return () => cancelAnimationFrame(raf)
   }, [])
 
-  return <canvas ref={canvasRef} className="game-canvas" aria-label="Battlefield" />
+  // ---- pulling the slingshot with a finger or the mouse ----
+  /** Pointer position in the canvas's own world units (y down, like the screen). */
+  const worldPoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current!
+    const rect = canvas.getBoundingClientRect()
+    const viewW = anim.current.viewW
+    return { x: ((e.clientX - rect.left) / rect.width) * viewW, y: ((e.clientY - rect.top) / rect.height) * WORLD_H }
+  }
+  const near = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const { angle, power } = live.current
+    const p = worldPoint(e)
+    const pouch = pouchPoint({ angle, power }, 1)
+    // Fingers are big: grab anywhere near the pouch or the fork.
+    return Math.hypot(p.x - pouch.x, p.y - pouch.y) < GRAB_RADIUS || Math.hypot(p.x - SLING_ANCHOR.x, p.y - SLING_ANCHOR.y) < GRAB_RADIUS
+  }
+  const pullOf = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const p = worldPoint(e)
+    return { dx: SLING_ANCHOR.x - p.x, dy: p.y - SLING_ANCHOR.y }
+  }
+  const pullTo = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const aim = aimFromPull(pullOf(e))
+    live.current.onAim(aim.angle, aim.power)
+  }
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="game-canvas"
+      aria-label="Battlefield: drag back from the slingshot to aim"
+      onPointerDown={(e) => {
+        if (!live.current.canAim || !near(e)) return
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId) // keep the drag if the finger leaves the canvas
+        } catch {
+          // not an active pointer: the drag still works while it stays over the canvas
+        }
+        anim.current.dragging = true
+        pullTo(e)
+      }}
+      onPointerMove={(e) => {
+        if (anim.current.dragging && e.pointerType === 'mouse' && e.buttons === 0) {
+          // The button was let go somewhere we never heard about: don't leave the pouch stuck to the cursor.
+          anim.current.dragging = false
+          live.current.onRelease(null)
+        } else if (anim.current.dragging) pullTo(e)
+        else e.currentTarget.style.cursor = live.current.canAim && near(e) ? 'grab' : 'default'
+      }}
+      onPointerUp={(e) => {
+        const wasDragging = anim.current.dragging
+        anim.current.dragging = false
+        if (wasDragging && live.current.canAim) {
+          // Letting go fires. Dropping the pouch back at the fork cancels instead.
+          const pull = pullOf(e)
+          live.current.onRelease(Math.hypot(pull.dx, pull.dy) >= CANCEL_PULL ? aimFromPull(pull) : null)
+        }
+        if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+      }}
+      onPointerCancel={() => {
+        if (anim.current.dragging) live.current.onRelease(null)
+        anim.current.dragging = false
+      }}
+    />
+  )
 }

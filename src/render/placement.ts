@@ -21,7 +21,7 @@ export const enemyPlacement = (tower: Tower): Placement => ({ screenX: tower.x +
 /** Converts a shot-physics x to a screen x. */
 export type MapX = (x: number) => number
 
-/** Shots you fire: same direction as the physics, just shifted over to your cannon. */
+/** Shots you fire: same direction as the physics, just shifted over to your slingshot. */
 export const outwardMapX: MapX = (x) => x + ATTACK_OFFSET
 
 /** Enemy shots at your tower: flipped, so the physics' near face lands on your tower's right side. */

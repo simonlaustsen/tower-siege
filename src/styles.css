@@ -80,7 +80,7 @@ button {
 
 /* ---- stage ---- */
 .field {
-  /* just your side of the battlefield: your tower and cannon, as big as fits */
+  /* just your side of the battlefield: your tower and slingshot, as big as fits */
   width: min(100%, 560px, calc(62vh * 556 / 600));
   margin: 0 auto;
   display: flex;
@@ -99,6 +99,9 @@ button {
 }
 .game-canvas {
   display: block;
+  touch-action: none; /* dragging the slingshot must not scroll the page */
+  user-select: none;
+  -webkit-user-select: none;
   width: 100%;
   aspect-ratio: 556 / 600; /* the canvas sets the real ratio itself */
 }
@@ -176,6 +179,28 @@ button {
 }
 .banner.big strong {
   color: #ff6b6b;
+}
+@media (max-width: 560px) {
+  .banner strong,
+  .banner span {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .banner strong {
+    -webkit-line-clamp: 2;
+  }
+  .banner span {
+    -webkit-line-clamp: 1;
+  }
+  /* Errors need their whole message, so they may be taller. */
+  .banner.big {
+    height: auto;
+    min-height: 4.8em;
+  }
+  .banner.big span {
+    -webkit-line-clamp: 4;
+  }
 }
 .banner.idle:empty,
 .banner:has(span:empty):not(:has(strong)) {
@@ -292,7 +317,9 @@ button:disabled {
     position: static;
     transform: none;
     max-width: none;
-    min-height: 3.2em;
+    /* A fixed height, so the box does not grow and shrink with the words shown (a long line is trimmed instead). */
+    height: 4.8em;
+    overflow: hidden;
     justify-content: center;
     border-radius: 0;
     background: var(--panel);
@@ -843,5 +870,14 @@ textarea {
     100% {
       opacity: 0;
     }
+  }
+}
+
+/* On a phone the banner is part of the box: keep its space even when there is nothing to say. */
+@media (max-width: 560px) {
+  .banner.idle:empty,
+  .banner:has(span:empty):not(:has(strong)) {
+    display: flex;
+    visibility: hidden;
   }
 }

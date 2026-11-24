@@ -140,6 +140,8 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
   const [rematch, setRematch] = useState(() => session.rematch ?? { mine: false, theirs: false })
   const [angle, setAngle] = useState(45)
   const [power, setPower] = useState(70)
+  // Has an aim been set this turn? Until then the slingshot rests at its fork.
+  const [aimed, setAimed] = useState(false)
   const [peek, setPeek] = useState(false)
   const [peekTower, setPeekTower] = useState<Tower>(() => session.debugEnemyTower?.() ?? UNKNOWN_TOWER)
   const [myTower, setMyTowerState] = useState<Tower>(() => session.me.tower)
@@ -277,10 +279,12 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
     }, RESULT_MS)
   }, [go, later, showShout, startIncomingIfReady])
 
-  const fire = useCallback(() => {
+  /** Fires the aim set on screen, or `aim` when the slingshot is let go (state may not have caught up with the last drag yet). */
+  const fire = useCallback((aim?: { angle: number; power: number }) => {
     if (phaseRef.current !== 'aim') return
     const id = nextId.current++
-    const input = { angle, power }
+    const input = aim ?? { angle, power }
+    setAimed(false)
 
     // What this screen is allowed to animate. In peek mode (dev only) it is the real
     // outcome against the real tower; otherwise only the flight up to the edge of the screen.
@@ -299,14 +303,14 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
       active = { id, dir: 'out', path: mapPath(flight.path, outwardMapX), groundLanding: flight.landsInView, detail: null }
     }
 
-    const pending: InFlight = { id, angle, power, active, animationDone: false, reply: null }
+    const pending: InFlight = { id, angle: input.angle, power: input.power, active, animationDone: false, reply: null }
     inFlight.current = pending
     setError(null)
     setFeedback(null)
     go('shooting')
     setShot(active)
 
-    me.fire(angle, power)
+    me.fire(input.angle, input.power)
       .then((reply) => {
         if (inFlight.current !== pending) return // new game started meanwhile
         pending.reply = reply
@@ -368,20 +372,20 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement && e.target.type === 'range') return
-      if (e.key === 'ArrowLeft') setAngle((v) => clamp(v + 1, MIN_ANGLE, MAX_ANGLE))
-      else if (e.key === 'ArrowRight') setAngle((v) => clamp(v - 1, MIN_ANGLE, MAX_ANGLE))
-      else if (e.key === 'ArrowUp') setPower((v) => clamp(v + 1, MIN_POWER, MAX_POWER))
-      else if (e.key === 'ArrowDown') setPower((v) => clamp(v - 1, MIN_POWER, MAX_POWER))
+      if (e.key === 'ArrowLeft') (setAimed(true), setAngle((v) => clamp(v + 1, MIN_ANGLE, MAX_ANGLE)))
+      else if (e.key === 'ArrowRight') (setAimed(true), setAngle((v) => clamp(v - 1, MIN_ANGLE, MAX_ANGLE)))
+      else if (e.key === 'ArrowUp') (setAimed(true), setPower((v) => clamp(v + 1, MIN_POWER, MAX_POWER)))
+      else if (e.key === 'ArrowDown') (setAimed(true), setPower((v) => clamp(v - 1, MIN_POWER, MAX_POWER)))
       else if (e.key === ' ' || e.key === 'Enter') {
         if (e.target instanceof HTMLButtonElement) return
         e.preventDefault()
-        fire()
+        if (aimed) fire()
       } else return
       if (e.key.startsWith('Arrow')) e.preventDefault()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [fire])
+  }, [fire, aimed])
 
   // ---- what to show ----
 
@@ -404,7 +408,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
     banner = {
       tone: 'idle',
       title: 'Your turn',
-      text: history[0] ? `Last shot: ${shoutFor(history[0].feedback.kind, 'mine').text}` : 'Set your angle and power, then fire!',
+      text: history[0] ? `Last shot: ${shoutFor(history[0].feedback.kind, 'mine').text}` : 'Pull back the slingshot and let go!',
     }
   } else if (phase === 'shooting') banner = { tone: 'idle', title: waiting ? 'Waiting for the other phone…' : 'Shot away…' }
   else if (phase === 'result' && feedback) banner = { tone: feedback.tone, title: feedback.hint }
@@ -453,6 +457,15 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
           myTower={myTower}
           enemyTower={peek ? peekTower : null}
           angle={angle}
+          power={power}
+          canAim={canAct}
+          aimed={aimed}
+          onAim={(a, p) => {
+            setAngle(a)
+            setPower(p)
+            setAimed(true)
+          }}
+          onRelease={(aim) => (aim ? fire(aim) : setAimed(false))}
           myTeam={myTeam}
           enemyTeam={enemyTeam}
           shot={shot}
@@ -531,16 +544,16 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
           estimate={estimate}
           shots={[...history].reverse().map((h) => ({ n: h.n, angle: h.angle, power: h.power, landing: h.flight.landing, result: resultOf(h.feedback.kind) }))}
           aim={aimLanding}
-          active={canAct}
+          active={canAct && aimed}
           enemy={enemyTeam}
         />
       )}
       </div>
 
       <section className="controls" data-active={canAct}>
-        <Stepper label="Angle" unit="°" value={angle} min={MIN_ANGLE} max={MAX_ANGLE} disabled={!canAct} onChange={setAngle} />
-        <Stepper label="Power" unit="%" value={power} min={MIN_POWER} max={MAX_POWER} disabled={!canAct} onChange={setPower} />
-        <button type="button" className="fire" disabled={!canAct} onClick={fire}>
+        <Stepper label="Angle" unit="°" value={angle} min={MIN_ANGLE} max={MAX_ANGLE} disabled={!canAct} onChange={(v) => (setAimed(true), setAngle(v))} />
+        <Stepper label="Power" unit="%" value={power} min={MIN_POWER} max={MAX_POWER} disabled={!canAct} onChange={(v) => (setAimed(true), setPower(v))} />
+        <button type="button" className="fire" disabled={!canAct || !aimed} onClick={() => fire()}>
           {canAct ? 'FIRE!' : phase === 'shooting' ? 'Firing…' : phase === 'over' ? 'Game over' : 'Enemy turn…'}
         </button>
       </section>

@@ -1,4 +1,4 @@
-import { CANNON_SCREEN_X, GROUND_MARGIN, WORLD_H, WORLD_W } from '../game/constants'
+import { SLING_SCREEN_X, GROUND_MARGIN, WORLD_H, WORLD_W } from '../game/constants'
 import { mulberry32 } from './rng'
 
 export const BG_MARGIN = 20 // extra world units on every side so screen shake never shows edges
@@ -84,12 +84,12 @@ function paintGround(ctx: CanvasRenderingContext2D) {
     ctx.fill()
   }
 
-  // distance markers: metres from your cannon, the same numbers the range finder uses
+  // distance markers: metres from your slingshot, the same numbers the range finder uses
   ctx.fillStyle = 'rgba(255,240,210,0.5)'
   ctx.font = '600 14px system-ui, sans-serif'
   ctx.textAlign = 'center'
-  for (let d = 100; CANNON_SCREEN_X + d < WORLD_W; d += 100) {
-    const x = CANNON_SCREEN_X + d
+  for (let d = 100; SLING_SCREEN_X + d < WORLD_W; d += 100) {
+    const x = SLING_SCREEN_X + d
     ctx.fillRect(x - 1, GY + 12, 2, 8)
     ctx.fillText(String(d), x, GY + 38)
   }
@@ -133,7 +133,7 @@ function paintGround(ctx: CanvasRenderingContext2D) {
 
 function paintBushes(ctx: CanvasRenderingContext2D) {
   const rng = mulberry32(31)
-  // (none on the far left: that is where your tower and cannon stand)
+  // (none on the far left: that is where your tower and slingshot stand)
   for (const x of [455, 520, 905, 965]) {
     for (let k = 0; k < 4; k++) {
       const bx = x + (k - 1.5) * 9 + rng() * 4

@@ -1,5 +1,5 @@
 import {
-  CANNON_X,
+  SLING_X,
   HIGH_CLEARANCE,
   NEAR_MISS_DISTANCE,
   NEAR_OVER_CLEARANCE,
@@ -20,7 +20,7 @@ import { createTower } from './tower'
  * qualitative hint each shot earned. It never sees the tower.
  */
 export interface TowerEstimate {
-  /** The tower's left edge is at least this far from the cannon (same x as shot physics). */
+  /** The tower's left edge is at least this far from the slingshot (same x as shot physics). */
   lo: number
   /** ...and at most this far. */
   hi: number
@@ -128,9 +128,9 @@ export function narrow(estimate: TowerEstimate, flight: Flight, kind: FeedbackKi
   return { lo, hi }
 }
 
-/** The ruler on the range finder runs from the cannon to here. */
+/** The ruler on the range finder runs from the slingshot to here. */
 export const RULER_END = 1000
-export const RULER_START = CANNON_X
+export const RULER_START = SLING_X
 
 /** The kind of result a hint describes, for marking your shots on the ruler. */
 export function resultOf(kind: FeedbackKind): 'short' | 'over' | 'hit' | 'big' {

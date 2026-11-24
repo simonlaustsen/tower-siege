@@ -67,20 +67,20 @@ code itself sits after the `#`, which browsers never send to a server.
 |---|---|
 | `src/game/` | Pure game logic, no React: physics, towers, materials, feedback, the defender, the bot's planner |
 | `src/net/` | `Link` (message pipe), `RtcLink` (WebRTC), pairing codes, `Peer` (one player's side of a match), sessions, `Bot` |
-| `src/render/` | Procedural Canvas 2D art: scenery, wooden blocks, cannon, particles (no image files) |
+| `src/render/` | Procedural Canvas 2D art: scenery, wooden blocks, slingshot, particles (no image files) |
 | `src/Root.tsx`, `Game.tsx`, `Pairing.tsx`, `GameCanvas.tsx` | The screens (menu, pairing, game) and the canvas renderer |
 
 **Hidden information.** The attacker sends only `{angle, power}`. The defender's phone resolves the
 shot against its own tower and replies with qualitative feedback only. A phone never learns anything
 else about the other tower. Tests assert that nothing about the tower leaks into a reply.
 
-**Screen layout.** One scene, always showing just your own tower and your own cannon side by side.
+**Screen layout.** One scene, always showing just your own tower and your own slingshot side by side.
 The enemy is off the right edge of the screen, marked with an "ENEMY" arrow. Your shots fly right and
 leave the screen; the enemy's shots arrive from the right edge and hit your tower.
 
 **Teams and turn halo.** The host is **blue**, the guest **red** (against the computer you are blue), so
 two screens side by side can be told apart even though both play left to right. Each phone draws its own
-tower flag, cannon banner and shot trails in its team colour and the enemy in the other, and a soft halo
+tower flag, banner, rubber bands and shot trails in its team colour and the enemy in the other, and a soft halo
 around the battlefield glows in the colour of whoever's turn it is: the same colour on both phones.
 The halo itself never moves; when the turn changes a blurred glow spreads in from it towards the
 middle a short way, mostly just fading out (about 0.8 s), as the signal.
@@ -92,14 +92,22 @@ middle a short way, mostly just fading out (about 0.8 s), as the signal.
 There is no shot log any more: the range finder shows where each shot came down, and hovering a mark
 shows its angle and power.
 
-**Range finder.** Under the scene, a ruler (metres from your cannon) shows a shaded zone where the
+**Slingshot.** You aim by pulling the pouch back with a finger or the mouse: the direction of the pull is the
+angle (a 160° sweep: from 70° below the horizon, for a dive, up to 90° straight up; pull the pouch above the fork to aim down) and its length is the power (10-100%). The slingshot starts every turn at
+rest, with the pouch at the fork; a dashed line from the fork appears once you pull, showing the way the ball will
+fly. **Letting go fires** and the pouch springs forward; dropping the pouch back at the fork cancels instead.
+The ball is released from the fork, 100 m up (`SLING_Y`). The − / + steppers (and arrow keys) still set an aim, which
+holds the pouch back and enables the **FIRE!** button. The mapping between pull and aim is `src/game/sling.ts`; the
+drawing is `src/render/slingshot.ts`.
+
+**Range finder.** Under the scene, a ruler (metres from your slingshot) shows a shaded zone where the
 enemy tower can be. It is worked out from the rules (a tower stands 510-780 m away) and what your
 shots earned: a hint like "slightly short" or "just over the top" rules distances out
 (`src/game/rangeFinder.ts`). It never sees the tower, and a test checks the real tower always stays
 inside the zone. Your shots appear on the ruler where they came down (grey short, purple over, gold
 hit), and a ▼ shows where your current angle and power would come down, so you can line it up with the
-zone. The same metres are marked on the ground in the scene. The shot physics is unchanged (a cannon on the
-left, a tower on the right); `src/render/placement.ts` maps it onto the screen, mirroring enemy
+zone. The same metres are marked on the ground in the scene. The shot physics is a slingshot on the
+left and a tower on the right; `src/render/placement.ts` maps it onto the screen, mirroring enemy
 shots so they land on the right-hand face of your tower. Tests check that a mirrored hit lands on
 exactly the block the physics says was hit.
 

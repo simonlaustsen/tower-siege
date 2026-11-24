@@ -11,14 +11,17 @@ export const SIM_DT = 1 / 240 // fixed physics timestep
 export const MAX_SIM_STEPS = 240 * 12 // safety cap: 12 seconds of flight
 export const PATH_SAMPLE_EVERY = 2 // keep every n-th step for rendering
 
-export const MIN_ANGLE = 10
-export const MAX_ANGLE = 80
+/** A 160° sweep: from 70° below the horizon (a dive) up to straight up. */
+export const MIN_ANGLE = -70
+export const MAX_ANGLE = 90
 export const MIN_POWER = 10
 export const MAX_POWER = 100
 
-export const CANNON_X = 90
-export const CANNON_Y = 26 // pivot height above ground
-export const BARREL_LENGTH = 46
+export const SLING_X = 90
+/** Height of the slingshot's fork above the ground: where the ball is released from. */
+export const SLING_Y = 100
+/** Pulling the pouch back this far (world units) is full power. */
+export const MAX_PULL = 80
 export const PROJECTILE_RADIUS = 6
 
 // Tower shape and the collapse rule were tuned by simulation (bot vs bot, see the
@@ -49,14 +52,14 @@ export const HIGH_CLEARANCE = 150
 export const VIEW_EDGE_X = 430
 
 // ---- Screen layout ----
-// Your own tower stands at the left with your cannon right beside it; the enemy lies
-// beyond the right edge of the screen. Shot physics always runs from a cannon at CANNON_X to a
+// Your own tower stands at the left with your slingshot right beside it; the enemy lies
+// beyond the right edge of the screen. Shot physics always runs from a slingshot at SLING_X to a
 // tower at its secret `tower.x`; these numbers place that physics onto the screen.
 /** Screen x of the left edge of your own tower. */
 export const MY_TOWER_X = 30
 /** Shift from shot-physics x to screen x for shots you fire. */
 export const ATTACK_OFFSET = 120
-export const CANNON_SCREEN_X = CANNON_X + ATTACK_OFFSET
+export const SLING_SCREEN_X = SLING_X + ATTACK_OFFSET
 export const VIEW_EDGE_SCREEN_X = VIEW_EDGE_X + ATTACK_OFFSET
 /** Width of the screen on a real game: just enough that a shot of yours flies out of the right edge. */
 export const VIEW_W = VIEW_EDGE_SCREEN_X + PROJECTILE_RADIUS

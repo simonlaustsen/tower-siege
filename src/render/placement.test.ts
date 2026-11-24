@@ -3,7 +3,7 @@ import { previewFlight } from '../game/attackerView'
 import {
   ATTACK_OFFSET,
   BLOCK_SIZE,
-  CANNON_SCREEN_X,
+  SLING_SCREEN_X,
   VIEW_EDGE_SCREEN_X,
   MY_TOWER_X,
   PROJECTILE_RADIUS,
@@ -16,12 +16,12 @@ import { createTower } from '../game/tower'
 import { cellRect, enemyPlacement, inwardMapX, mapPath, MY_PLACEMENT, outwardMapX } from './placement'
 
 describe('screen layout', () => {
-  it('puts your tower and your cannon next to each other, with the edge of the screen beyond', () => {
+  it('puts your tower and your slingshot next to each other, with the edge of the screen beyond', () => {
     const towerRight = MY_TOWER_X + TOWER_WIDTH
     expect(MY_TOWER_X).toBeGreaterThanOrEqual(0)
-    expect(CANNON_SCREEN_X - towerRight).toBeGreaterThan(40) // room to breathe...
-    expect(CANNON_SCREEN_X - towerRight).toBeLessThan(140) // ...but clearly side by side
-    expect(VIEW_EDGE_SCREEN_X).toBeGreaterThan(CANNON_SCREEN_X + 150) // visible flight before the edge
+    expect(SLING_SCREEN_X - towerRight).toBeGreaterThan(40) // room to breathe...
+    expect(SLING_SCREEN_X - towerRight).toBeLessThan(140) // ...but clearly side by side
+    expect(VIEW_EDGE_SCREEN_X).toBeGreaterThan(SLING_SCREEN_X + 150) // visible flight before the edge
   })
 
   it('keeps the peeked enemy tower on screen', () => {
@@ -33,11 +33,11 @@ describe('screen layout', () => {
 })
 
 describe('your shots', () => {
-  it('leave from the muzzle of the cannon drawn on screen', () => {
+  it('are released from the fork of the slingshot drawn on screen', () => {
     const { path } = previewFlight({ angle: 45, power: 70 })
     const first = mapPath(path, outwardMapX)[0]
     const muzzle = muzzlePosition(45)
-    expect(first.x).toBeCloseTo(CANNON_SCREEN_X + (muzzle.x - (CANNON_SCREEN_X - ATTACK_OFFSET)))
+    expect(first.x).toBeCloseTo(SLING_SCREEN_X + (muzzle.x - (SLING_SCREEN_X - ATTACK_OFFSET)))
     expect(first.y).toBeCloseTo(muzzle.y)
   })
 

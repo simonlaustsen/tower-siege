@@ -1,7 +1,6 @@
 import {
-  BARREL_LENGTH,
-  CANNON_X,
-  CANNON_Y,
+  SLING_X,
+  SLING_Y,
   GRAVITY,
   MAX_SIM_STEPS,
   MAX_SPEED,
@@ -50,9 +49,9 @@ export interface ShotResult {
   flight: FlightSummary
 }
 
-export function muzzlePosition(angleDeg: number): Vec {
-  const a = (angleDeg * Math.PI) / 180
-  return { x: CANNON_X + Math.cos(a) * BARREL_LENGTH, y: CANNON_Y + Math.sin(a) * BARREL_LENGTH }
+/** Where the ball is released: the fork of the slingshot, whatever the angle. */
+export function muzzlePosition(_angleDeg?: number): Vec {
+  return { x: SLING_X, y: SLING_Y }
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))

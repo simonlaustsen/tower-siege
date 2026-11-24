@@ -1,4 +1,4 @@
-import { CANNON_X, TOWER_WIDTH } from './game/constants'
+import { SLING_X, TOWER_WIDTH } from './game/constants'
 import { TEAMS, type Team } from './game/teams'
 import { RULER_END, RULER_START, type TowerEstimate } from './game/rangeFinder'
 
@@ -31,7 +31,7 @@ const LEFT = PAD
 const RIGHT = W - PAD
 const LINE_Y = 70
 const BAND_TOP = 40
-const metres = (x: number) => Math.round(x - CANNON_X)
+const metres = (x: number) => Math.round(x - SLING_X)
 const SPAN = RULER_END - RULER_START
 const at = (x: number) => LEFT + (Math.min(RULER_END, Math.max(RULER_START, x)) - RULER_START) * ((RIGHT - LEFT) / SPAN)
 
