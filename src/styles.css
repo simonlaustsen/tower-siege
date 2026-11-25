@@ -128,6 +128,7 @@ button {
   right: 10px;
 }
 .bar {
+  position: relative;
   width: 90px;
   height: 8px;
   border-radius: 4px;
@@ -135,16 +136,29 @@ button {
   overflow: hidden;
 }
 .bar-fill {
-  height: 100%;
-  background: var(--good);
-  transition: width 0.4s;
+  position: absolute;
+  inset: 0 auto 0 0;
 }
-.bar-fill[data-hidden='true'] {
-  background: repeating-linear-gradient(45deg, #888 0 6px, #aaa 6px 12px);
+/* A hit knocks the bar down fast; the colour follows more gently. */
+.bar-fill {
+  transition: width 0.16s cubic-bezier(0.2, 0.9, 0.3, 1), background-color 0.5s;
 }
-.integrity-num {
-  min-width: 2.6em;
-  text-align: right;
+.bar[data-final='true'] .bar-fill {
+  transition: width 1.3s cubic-bezier(0.5, 0, 0.2, 1), background-color 1.3s;
+}
+.bar-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  animation: bar-flash 0.4s ease-out forwards;
+}
+@keyframes bar-flash {
+  from {
+    opacity: 0.95;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 .banner {
@@ -338,9 +352,6 @@ button:disabled {
   }
   .bar {
     width: 44px;
-  }
-  .integrity-num {
-    min-width: 2.4em;
   }
 }
 

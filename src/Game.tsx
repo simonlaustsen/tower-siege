@@ -15,7 +15,7 @@ import { shoutFor, type Shout } from './game/shout'
 import { simulateShot } from './game/physics'
 import { otherTeam, TEAMS, type Team } from './game/teams'
 import { flightOf, initialEstimate, landingX, narrow, resultOf, type Flight } from './game/rangeFinder'
-import { countBlocks, createTower, initialBlocks, totalMaxHp, type Tower } from './game/tower'
+import { createTower, totalMaxHp, type Tower } from './game/tower'
 import type { GameSession } from './net/session'
 import { enemyPlacement, inwardMapX, mapPath, MY_PLACEMENT, outwardMapX } from './render/placement'
 import type { IncomingShot } from './net/peer'
@@ -120,26 +120,72 @@ function Stepper(props: {
   )
 }
 
-/** Tower health, as a small chip over the battlefield. The enemy's is a secret unless peeking. */
-function IntegrityChip(props: { side: 'mine' | 'enemy'; label: string; team: Team; tower: Tower; hidden?: boolean }) {
-  const { side, label, team, tower, hidden = false } = props
-  const hpLeft = tower.hp.flat().reduce((s, v) => s + v, 0)
-  const percent = Math.round((countBlocks(tower) / Math.max(1, initialBlocks(tower))) * 100)
+/** How intact a tower is: the share of its hit points left, 0..1. */
+interface Integrity {
+  hp: number
+}
+
+const integrityOf = (tower: Tower): Integrity => ({
+  hp: tower.hp.flat().reduce((s, v) => s + v, 0) / Math.max(1, totalMaxHp(tower)),
+})
+
+/** Every tower starts whole, so this is what you know of the enemy's before your first shot lands. */
+const FULL_INTEGRITY: Integrity = { hp: 1 }
+
+/** On the final blow the bar first takes the hit, then (after this many ms) runs all the way down to empty. */
+const FINAL_DRAIN_DELAY_MS = 750
+/** How long (ms) after the game ends the Victory / Defeat card waits, so the bar's last stand is seen. */
+const END_CARD_DELAY_MS = 2300
+
+/** Bar colour: green when whole, through yellow, to red when nearly gone. */
+const healthColor = (hp: number) => `hsl(${Math.round(Math.max(0, Math.min(1, hp)) * 120)} 78% 46%)`
+
+/**
+ * Tower health, as a small chip over the battlefield. A hit knocks the bar down in one jolt with a white flash and
+ * shakes the chip, harder the bigger the hit.
+ * When `final`, the tower has fallen and the bar runs down to nothing.
+ */
+function IntegrityChip(props: { side: 'mine' | 'enemy'; label: string; team: Team; integrity: Integrity; final: boolean }) {
+  const { side, label, team, integrity, final } = props
+  const [drained, setDrained] = useState(false)
+  useEffect(() => {
+    setDrained(false)
+    if (!final) return
+    const id = setTimeout(() => setDrained(true), FINAL_DRAIN_DELAY_MS)
+    return () => clearTimeout(id)
+  }, [final])
+
+  const hp = final && drained ? 0 : integrity.hp
+  const chip = useRef<HTMLDivElement>(null)
+  const previous = useRef(hp)
+  const [flash, setFlash] = useState(0)
+  useEffect(() => {
+    const before = previous.current
+    previous.current = hp
+    if (hp >= before) return
+    setFlash((n) => n + 1)
+    const reach = Math.min(9, 3 + (before - hp) * 60)
+    if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      chip.current?.animate(
+        [0, -1, 0.8, -0.6, 0.4, -0.2, 0].map((k) => ({ transform: `translate(${k * reach}px, ${Math.abs(k) * reach * 0.3}px)` })),
+        { duration: 460, easing: 'ease-out' },
+      )
+    }
+  }, [hp])
+
   return (
     <div
+      ref={chip}
       className={`integrity ${side}`}
       title={`${label} tower integrity`}
       style={{ background: `rgba(${TEAMS[team].rgb},0.62)`, borderColor: TEAMS[team].light }}
     >
       <span>{label}</span>
-      <div className="bar">
-        <div
-          className="bar-fill"
-          style={{ width: hidden ? '100%' : `${(hpLeft / Math.max(1, totalMaxHp(tower))) * 100}%` }}
-          data-hidden={hidden}
-        />
+      <div className="bar" data-final={final}>
+        <div className="bar-fill" style={{ width: `${hp * 100}%`, background: healthColor(hp) }}>
+          {flash > 0 && <div key={flash} className="bar-flash" />}
+        </div>
       </div>
-      <span className="integrity-num">{hidden ? '???' : `${percent}%`}</span>
     </div>
   )
 }
@@ -166,6 +212,8 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
   const [idle, setIdle] = useState(false)
   const [peek, setPeek] = useState(false)
   const [peekTower, setPeekTower] = useState<Tower>(() => session.debugEnemyTower?.() ?? UNKNOWN_TOWER)
+  // What the enemy's phone has told this one about its tower: updated after every shot of mine, from their reply.
+  const [enemyIntegrity, setEnemyIntegrity] = useState<Integrity>(FULL_INTEGRITY)
   const [myTower, setMyTowerState] = useState<Tower>(() => session.me.tower)
   const [shot, setShot] = useState<ActiveShot | null>(null)
   const [waiting, setWaiting] = useState(false)
@@ -176,6 +224,8 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
   const [error, setError] = useState<string | null>(null)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [outcome, setOutcome] = useState<'won' | 'lost' | null>(null)
+  // The Victory / Defeat card comes up a moment after the game ends, once the losing bar has run down.
+  const [cardShown, setCardShown] = useState(false)
 
   // Refs mirror state that event handlers need to read synchronously.
   const phaseRef = useRef<Phase>(phase)
@@ -224,6 +274,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
       setGameId((g) => g + 1)
       setShot(null)
       setWaiting(false)
+      setEnemyIntegrity(FULL_INTEGRITY)
       setFeedback(null)
       setShout(null)
       setEnemyFeedback(null)
@@ -235,6 +286,13 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
     },
     [session, go, setMyTower],
   )
+
+  useEffect(() => {
+    setCardShown(false)
+    if (!outcome) return
+    const id = setTimeout(() => setCardShown(true), END_CARD_DELAY_MS)
+    return () => clearTimeout(id)
+  }, [outcome])
 
   useEffect(() => session.onConnection(setConnected), [session])
   useEffect(() => session.onNewGame(() => startFresh(session.me)), [session, startFresh])
@@ -289,6 +347,8 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
     if (!p || !p.animationDone || !p.reply) return
     inFlight.current = null
     const { feedback: fb, towerDown } = p.reply
+    // The defender's tower after this shot: their snapshot, run through the same deterministic physics they used.
+    setEnemyIntegrity(integrityOf(simulateShot(p.reply.reveal, { angle: p.angle, power: p.power }).towerAfter))
     setShot(null)
     setWaiting(false)
     setFeedback(fb)
@@ -513,8 +573,8 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
           shot={shot}
           onShotEnd={onShotEnd}
         />
-        <IntegrityChip side="mine" label={`${TEAMS[myTeam].name} · you`} team={myTeam} tower={myTower} />
-        <IntegrityChip side="enemy" label={TEAMS[enemyTeam].name} team={enemyTeam} tower={peekTower} hidden={!peek} />
+        <IntegrityChip side="mine" label={`${TEAMS[myTeam].name} · you`} team={myTeam} integrity={integrityOf(myTower)} final={outcome === 'lost'} />
+        <IntegrityChip side="enemy" label={TEAMS[enemyTeam].name} team={enemyTeam} integrity={peek ? integrityOf(peekTower) : enemyIntegrity} final={outcome === 'won'} />
         <div className={`banner ${banner.tone}`} role="status" aria-live="polite">
           {banner.title && <strong>{banner.title}</strong>}
           {banner.text && <span>{banner.text}</span>}
@@ -529,7 +589,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
             {shout.text}
           </div>
         )}
-        {outcome && (
+        {outcome && cardShown && (
           <div className="overlay">
             <div className="card">
               <h2>{outcome === 'won' ? 'Victory!' : 'Defeat'}</h2>

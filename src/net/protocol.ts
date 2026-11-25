@@ -11,7 +11,8 @@ import type { Tower } from '../game/tower'
  * qualitative feedback, plus a one-off snapshot of the tower as it stood when the shot
  * arrived (`reveal`), so the attacker's screen can follow the ball in and replay the hit.
  * The attacker's screen shows that snapshot only for the length of the replay and keeps nothing.
- * Never add anything else here (no standing positions, no hit points between shots).
+ * The snapshot is also how the attacker's chip learns the defender's tower integrity after each shot: it replays
+ * the shot on it (the physics is deterministic). Never add anything else here (no standing positions).
  */
 export const PROTOCOL_VERSION = 2
 
