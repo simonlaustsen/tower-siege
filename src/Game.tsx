@@ -30,6 +30,7 @@ type Phase = 'aim' | 'shooting' | 'result' | 'enemy-turn' | 'incoming' | 'enemy-
 
 const RESULT_MS = 1600 // how long your shot's feedback stays up before the enemy's turn begins
 const ENEMY_RESULT_MS = 1600 // how long the enemy shot's outcome stays up before your turn
+const IDLE_NUDGE_MS = 3000 // how long you may sit on your turn without touching anything before the game shows how to pull the slingshot
 const SHOUT_MS = 1500 // how long the big callout over the battlefield stays up
 
 interface HistoryEntry {
@@ -161,6 +162,8 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
   const [power, setPower] = useState(70)
   // Has an aim been set this turn? Until then the slingshot rests at its fork.
   const [aimed, setAimed] = useState(false)
+  // Your turn has gone by with no interaction: nudge the player to pull the slingshot.
+  const [idle, setIdle] = useState(false)
   const [peek, setPeek] = useState(false)
   const [peekTower, setPeekTower] = useState<Tower>(() => session.debugEnemyTower?.() ?? UNKNOWN_TOWER)
   const [myTower, setMyTowerState] = useState<Tower>(() => session.me.tower)
@@ -237,6 +240,14 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
   useEffect(() => session.onNewGame(() => startFresh(session.me)), [session, startFresh])
   useEffect(() => session.onRematchChange?.(() => setRematch({ ...session.rematch! })), [session])
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
+
+  // Any interaction (a pull, a stepper, a key) sets `aimed`, which resets the wait; so does a new turn.
+  useEffect(() => {
+    setIdle(false)
+    if (!canAct || aimed) return
+    const id = setTimeout(() => setIdle(true), IDLE_NUDGE_MS)
+    return () => clearTimeout(id)
+  }, [canAct, aimed])
 
   // ---- the enemy's turn: animate their shot against my tower ----
 
@@ -490,6 +501,7 @@ export default function Game({ session, onLeave, onReconnect }: GameProps) {
           power={power}
           canAim={canAct}
           aimed={aimed}
+          nudge={idle}
           onAim={(a, p) => {
             setAngle(a)
             setPower(p)

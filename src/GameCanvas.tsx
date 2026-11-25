@@ -16,7 +16,7 @@ import { TEAMS, type Team } from './game/teams'
 import { damageLevel, forEachBlock, isSoft, type Cell, type Tower } from './game/tower'
 import { createAssets, type Assets } from './render/assets'
 import { blockVariants, type BlockLook } from './render/blocks'
-import { drawAimLine, drawSlingshot, pouchPoint, SLING_ANCHOR } from './render/slingshot'
+import { drawAimLine, drawPullNudge, drawSlingshot, pouchPoint, SLING_ANCHOR } from './render/slingshot'
 import { aimFromPull } from './game/sling'
 import { cellRect, displayCol, enemyPlacement, MY_PLACEMENT, type MapX, type Placement } from './render/placement'
 import {
@@ -76,6 +76,8 @@ interface Props {
   canAim: boolean
   /** An aim has been set (by dragging or the steppers): the pouch is held back. Otherwise it rests at the fork. */
   aimed: boolean
+  /** Nobody has touched the slingshot for a while: show how to pull it. */
+  nudge: boolean
   /** The player pulled the pouch to a new aim. */
   onAim: (angle: number, power: number) => void
   /** The pouch was let go at this aim: fire. `null` when it was put back at the fork (cancel). */
@@ -114,12 +116,12 @@ const GRAB_RADIUS = 70
 const CANCEL_PULL = 14
 
 /** Canvas renderer. Owns animation state (projectile, particles); game state comes via props. */
-export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, onAim, onRelease, myTeam, enemyTeam, shot, onShotEnd }: Props) {
+export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, nudge, onAim, onRelease, myTeam, enemyTeam, shot, onShotEnd }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   // Latest props, readable from the long-lived animation loop.
-  const live = useRef({ myTower, enemyTower, angle, power, canAim, aimed, onAim, onRelease, myTeam, enemyTeam, onShotEnd })
-  live.current = { myTower, enemyTower, angle, power, canAim, aimed, onAim, onRelease, myTeam, enemyTeam, onShotEnd }
+  const live = useRef({ myTower, enemyTower, angle, power, canAim, aimed, nudge, onAim, onRelease, myTeam, enemyTeam, onShotEnd })
+  live.current = { myTower, enemyTower, angle, power, canAim, aimed, nudge, onAim, onRelease, myTeam, enemyTeam, onShotEnd }
 
   const anim = useRef({
     /** `elapsed` is seconds of real playback time. */
@@ -131,6 +133,8 @@ export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, o
     shake: 0,
     /** How far the pouch is drawn back: 1 at full aim, 0 relaxed. Snaps to 0 on release. */
     pull: 0,
+    /** 0..1: how visible the "pull the slingshot" hint is. */
+    nudge: 0,
     released: false,
     dragging: false,
     viewW: VIEW_W,
@@ -450,6 +454,9 @@ export function GameCanvas({ myTower, enemyTower, angle, power, canAim, aimed, o
       const sling = { aim: { angle, power }, pull: a.pull, loaded: canAim && !a.released, time: t, team: TEAMS[myTeam] }
       drawSlingshot(ctx, sling)
       if (canAim && !a.released && a.pull > 0.05) drawAimLine(ctx, sling)
+      const wantNudge = live.current.nudge && canAim && !aimed && !a.dragging && !a.released && !a.shot
+      a.nudge = wantNudge ? Math.min(1, a.nudge + dt * 4) : Math.max(0, a.nudge - dt * 8)
+      if (a.nudge > 0.01) drawPullNudge(ctx, t, a.nudge)
 
       // projectile
       if (projectile && a.shot && projectile.x <= maxX) {

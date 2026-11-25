@@ -207,3 +207,37 @@ export function drawSlingshot(ctx: CanvasRenderingContext2D, pose: SlingPose) {
 
   band(ctx, SLING_ANCHOR.x - TIP, pouch, pose.pull, band_color)
 }
+
+/**
+ * A hint for a player who has not touched the slingshot yet: a ghostly fingertip grabs the pouch, drags it back
+ * along a sample aim and lets go, over and over.
+ */
+export function drawPullNudge(ctx: CanvasRenderingContext2D, time: number, fade: number) {
+  const CYCLE = 2.2
+  const phase = (time % CYCLE) / CYCLE
+  const grab = Math.min(1, phase / 0.55) // 0..1 while dragging back
+  const eased = 1 - (1 - grab) * (1 - grab)
+  const hold = phase < 0.55 ? 1 : Math.max(0, 1 - (phase - 0.55) / 0.2) // fingertip visible, then fades on "release"
+  const aim = { angle: 40, power: 70 }
+  const end = pouchPoint(aim, 1)
+  const p = { x: SLING_ANCHOR.x + (end.x - SLING_ANCHOR.x) * eased, y: SLING_ANCHOR.y + (end.y - SLING_ANCHOR.y) * eased }
+
+  ctx.save()
+  // The fingertip: a soft ring that pulses at the pouch, then travels back with it.
+  const pulse = 1 + 0.15 * Math.sin(time * 9)
+  ctx.globalAlpha = fade * hold
+  const g = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, 20 * pulse)
+  g.addColorStop(0, 'rgba(255,255,255,0.85)')
+  g.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = g
+  ctx.beginPath()
+  ctx.arc(p.x, p.y, 20 * pulse, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.arc(p.x, p.y, 11, 0, Math.PI * 2)
+  ctx.stroke()
+
+  ctx.restore()
+}
